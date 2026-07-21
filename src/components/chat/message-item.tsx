@@ -8,6 +8,7 @@ import { Markdown } from "./markdown";
 import { IconButton } from "@/components/ui/icon-button";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { SentAttachments } from "./sent-attachments";
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -76,7 +77,14 @@ export function MessageItem({ message, isLastAssistant, onEdit, onRetry, onRegen
             )}
           >
             {isUser ? (
-              <p className="whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{message.content}</p>
+              <>
+                {message.attachments && message.attachments.length > 0 && (
+                  <SentAttachments attachments={message.attachments} />
+                )}
+                {message.content && (
+                  <p className="whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{message.content}</p>
+                )}
+              </>
             ) : message.content ? (
               <Markdown content={message.content} />
             ) : message.status === "streaming" ? (

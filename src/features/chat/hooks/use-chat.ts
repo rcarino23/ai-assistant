@@ -19,6 +19,25 @@ type StreamEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
+/**
+ * The chat UI shows exactly what the user typed. Any text-extracted
+ * attachments (csv/txt/md/json/xml) get folded into a *copy* of the
+ * message content right before it's sent to the provider, so the model
+ * still sees the file contents without them ever being displayed as raw
+ * text in the conversation.
+ */
+function buildApiHistory(history: ChatMessage[]): ChatMessage[] {
+  return history.map((m) => {
+    const contextBlocks = (m.attachments ?? [])
+      .filter((d) => d.selectedAsContext && d.extractedText)
+      .map((d) => `<document name="${d.name}">\n${d.extractedText}\n</document>`)
+      .join("\n\n");
+
+    if (!contextBlocks) return m;
+    return { ...m, content: m.content ? `${contextBlocks}\n\n${m.content}` : contextBlocks };
+  });
+}
+
 export function useChat({
   providerId,
   settings = DEFAULT_PROVIDER_SETTINGS,
@@ -60,7 +79,7 @@ export function useChat({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ providerId, messages: history, settings }),
+          body: JSON.stringify({ providerId, messages: buildApiHistory(history), settings }),
           signal: controller.signal,
         });
 
@@ -127,19 +146,13 @@ export function useChat({
     (content: string, documents: UploadedDocument[] = []) => {
       if ((!content.trim() && documents.length === 0) || isStreaming) return;
 
-      const contextBlocks = documents
-        .filter((d) => d.selectedAsContext && d.extractedText)
-        .map((d) => `<document name="${d.name}">\n${d.extractedText}\n</document>`)
-        .join("\n\n");
-
-      const finalContent = contextBlocks ? `${contextBlocks}\n\n${content}` : content;
-
       const userMessage: ChatMessage = {
         id: uuid(),
         role: "user",
-        content: finalContent,
+        content: content.trim(),
         createdAt: Date.now(),
         status: "done",
+        attachments: documents.length > 0 ? documents : undefined,
       };
       const history = [...messages, userMessage];
       setMessages(history);

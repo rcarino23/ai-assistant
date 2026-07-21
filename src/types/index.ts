@@ -1,3 +1,5 @@
+import type { UploadedDocument } from "@/features/documents/types";
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export type MessageStatus = "pending" | "streaming" | "done" | "error" | "stopped";
@@ -10,6 +12,8 @@ export interface ChatMessage {
   status?: MessageStatus;
   /** Which provider/model produced this (assistant messages only) */
   model?: string;
+  /** Files attached when this message was sent (user messages only). */
+  attachments?: UploadedDocument[];
 }
 
 export interface Conversation {

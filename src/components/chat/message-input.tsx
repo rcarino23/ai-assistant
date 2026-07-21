@@ -22,7 +22,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
   const [value, setValue] = React.useState("");
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const { documents, addFiles, removeDocument, clear, error, setError } = useDocumentUpload();
+  const { documents, addFiles, removeDocument, reset, error, setError } = useDocumentUpload();
 
   const resize = () => {
     const el = textareaRef.current;
@@ -37,7 +37,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
     if ((!value.trim() && documents.length === 0) || isStreaming || disabled) return;
     onSend(value.trim(), documents);
     setValue("");
-    clear();
+    reset();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

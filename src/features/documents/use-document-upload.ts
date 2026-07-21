@@ -132,5 +132,14 @@ export function useDocumentUpload() {
     });
   }, []);
 
-  return { documents, addFiles, removeDocument, clear, error, setError };
+  const reset = useCallback(() => {
+    setDocuments((prev) => {
+      prev.forEach((d) => {
+        if (d.previewUrl) previewUrls.current.delete(d.previewUrl);
+      });
+      return [];
+    });
+  }, []);
+
+  return { documents, addFiles, removeDocument, clear, reset, error, setError };
 }
