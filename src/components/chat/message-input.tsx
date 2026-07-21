@@ -88,7 +88,6 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
           multiple
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
-          accept=".txt,.md,.csv,.json,.xml,.pdf,.docx,.xlsx"
         />
 
         <IconButton label="Attach files" onClick={() => fileInputRef.current?.click()} disabled={disabled}>
@@ -123,7 +122,8 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
         )}
       </div>
       <p className="mt-2 text-center text-xs text-muted">
-        Press Enter to send, Shift + Enter for a new line. Attach .txt, .md, .csv, .json, or .xml for the assistant to read.
+        Press Enter to send, Shift + Enter for a new line. Text files (.txt, .md, .csv, .json, .xml) are read
+        as context; images, video, and other files are attached but not read as text yet.
       </p>
     </div>
   );

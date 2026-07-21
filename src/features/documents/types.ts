@@ -5,7 +5,19 @@
  * in the `messages` array ChatWindow sends to /api/chat — no changes needed
  * to the provider layer, since providers only ever see ChatMessage[].
  */
-export type DocumentType = "pdf" | "docx" | "txt" | "md" | "csv" | "xlsx" | "json" | "xml";
+export type DocumentType =
+  | "pdf"
+  | "docx"
+  | "txt"
+  | "md"
+  | "csv"
+  | "xlsx"
+  | "json"
+  | "xml"
+  | "image"
+  | "video"
+  | "audio"
+  | "other";
 
 export interface UploadedDocument {
   id: string;
@@ -15,4 +27,6 @@ export interface UploadedDocument {
   extractedText: string;
   uploadedAt: number;
   selectedAsContext: boolean;
+  /** Local object URL for images/video/audio — used for the attachment chip, not sent anywhere. */
+  previewUrl?: string;
 }
