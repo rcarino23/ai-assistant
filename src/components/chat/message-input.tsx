@@ -1,22 +1,28 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Paperclip, Square } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { IconButton } from "@/components/ui/icon-button";
+import { useDocumentUpload } from "@/features/documents/use-document-upload";
+import type { UploadedDocument } from "@/features/documents/types";
+import { AttachmentChip } from "./attachment-chip";
+import { PromptMenu } from "./prompt-menu";
 
 interface MessageInputProps {
   isStreaming: boolean;
   disabled?: boolean;
   disabledReason?: string;
-  onSend: (content: string) => void;
+  onSend: (content: string, documents: UploadedDocument[]) => void;
   onStop: () => void;
 }
 
 export function MessageInput({ isStreaming, disabled, disabledReason, onSend, onStop }: MessageInputProps) {
   const [value, setValue] = React.useState("");
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const { documents, addFiles, removeDocument, clear, error, setError } = useDocumentUpload();
 
   const resize = () => {
     const el = textareaRef.current;
@@ -28,9 +34,10 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
   React.useEffect(resize, [value]);
 
   const submit = () => {
-    if (!value.trim() || isStreaming || disabled) return;
-    onSend(value.trim());
+    if ((!value.trim() && documents.length === 0) || isStreaming || disabled) return;
+    onSend(value.trim(), documents);
     setValue("");
+    clear();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -40,16 +47,56 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
     }
   };
 
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    void addFiles(files);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handlePromptSelect = (template: string) => {
+    setValue((current) => (current ? template.replace("{{text}}", current) : template));
+    textareaRef.current?.focus();
+  };
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
       {disabled && disabledReason && (
         <p className="mb-2 text-center text-xs text-muted">{disabledReason}</p>
       )}
-      <div
-        className={cn(
-          "flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-soft transition-shadow focus-within:shadow-[0_0_0_2px_var(--accent)]"
-        )}
-      >
+
+      {error && (
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-red-500">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {documents.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {documents.map((doc) => (
+            <AttachmentChip key={doc.id} document={doc} onRemove={removeDocument} />
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-soft transition-shadow focus-within:shadow-[0_0_0_2px_var(--accent)]">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+          accept=".txt,.md,.csv,.json,.xml,.pdf,.docx,.xlsx"
+        />
+
+        <IconButton label="Attach files" onClick={() => fileInputRef.current?.click()} disabled={disabled}>
+          <Paperclip className="h-4 w-4" />
+        </IconButton>
+
+        <PromptMenu onSelect={handlePromptSelect} />
+
         <Textarea
           ref={textareaRef}
           value={value}
@@ -68,7 +115,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
           <Button
             size="icon"
             onClick={submit}
-            disabled={!value.trim() || disabled}
+            disabled={(!value.trim() && documents.length === 0) || disabled}
             aria-label="Send message"
           >
             <ArrowUp className="h-4 w-4" />
@@ -76,7 +123,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
         )}
       </div>
       <p className="mt-2 text-center text-xs text-muted">
-        Press Enter to send, Shift + Enter for a new line.
+        Press Enter to send, Shift + Enter for a new line. Attach .txt, .md, .csv, .json, or .xml for the assistant to read.
       </p>
     </div>
   );

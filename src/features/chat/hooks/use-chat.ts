@@ -3,8 +3,9 @@
 import * as React from "react";
 import { useCallback, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
-import type { ChatMessage, ProviderSettings } from "@/types";
 import { DEFAULT_PROVIDER_SETTINGS } from "@/types";
+import type { ChatMessage, ProviderSettings } from "@/types";
+import type { UploadedDocument } from "@/features/documents/types";
 
 interface UseChatOptions {
   providerId: string;
@@ -123,12 +124,20 @@ export function useChat({
   );
 
   const sendMessage = useCallback(
-    (content: string) => {
-      if (!content.trim() || isStreaming) return;
+    (content: string, documents: UploadedDocument[] = []) => {
+      if ((!content.trim() && documents.length === 0) || isStreaming) return;
+
+      const contextBlocks = documents
+        .filter((d) => d.selectedAsContext && d.extractedText)
+        .map((d) => `<document name="${d.name}">\n${d.extractedText}\n</document>`)
+        .join("\n\n");
+
+      const finalContent = contextBlocks ? `${contextBlocks}\n\n${content}` : content;
+
       const userMessage: ChatMessage = {
         id: uuid(),
         role: "user",
-        content,
+        content: finalContent,
         createdAt: Date.now(),
         status: "done",
       };
