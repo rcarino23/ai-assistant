@@ -5,6 +5,7 @@ import type { ChatMessage, ProviderSettings } from "@/types";
 import { useChat } from "@/features/chat/hooks/use-chat";
 import { MessageList } from "./message-list";
 import { MessageInput } from "./message-input";
+import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 
 interface ChatWindowProps {
   providerId: string;
@@ -13,6 +14,7 @@ interface ChatWindowProps {
   settings: ProviderSettings;
   initialMessages: ChatMessage[];
   onMessagesChange: (messages: ChatMessage[]) => void;
+  knowledgeItems: KnowledgeItem[];
 }
 
 export function ChatWindow({
@@ -22,6 +24,7 @@ export function ChatWindow({
   settings,
   initialMessages,
   onMessagesChange,
+  knowledgeItems
 }: ChatWindowProps) {
   const { messages, isStreaming, error, sendMessage, stop, regenerate, editMessage, retryMessage } = useChat({
     providerId,

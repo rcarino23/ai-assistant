@@ -6,12 +6,14 @@ import { v4 as uuid } from "uuid";
 import { DEFAULT_PROVIDER_SETTINGS } from "@/types";
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { UploadedDocument } from "@/features/documents/types";
+import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 
 interface UseChatOptions {
   providerId: string;
   settings?: ProviderSettings;
   initialMessages?: ChatMessage[];
   onMessagesChange?: (messages: ChatMessage[]) => void;
+  knowledgeItems?: KnowledgeItem[];
 }
 
 type StreamEvent =
@@ -26,8 +28,8 @@ type StreamEvent =
  * still sees the file contents without them ever being displayed as raw
  * text in the conversation.
  */
-function buildApiHistory(history: ChatMessage[]): ChatMessage[] {
-  return history.map((m) => {
+function buildApiHistory(history: ChatMessage[], knowledgeItems: KnowledgeItem[] = []): ChatMessage[] {
+  const withAttachments = history.map((m) => {
     const contextBlocks = (m.attachments ?? [])
       .filter((d) => d.selectedAsContext && d.extractedText)
       .map((d) => `<document name="${d.name}">\n${d.extractedText}\n</document>`)
@@ -36,6 +38,24 @@ function buildApiHistory(history: ChatMessage[]): ChatMessage[] {
     if (!contextBlocks) return m;
     return { ...m, content: m.content ? `${contextBlocks}\n\n${m.content}` : contextBlocks };
   });
+
+  if (knowledgeItems.length === 0) return withAttachments;
+
+  const bankContext = knowledgeItems
+    .map((item) => `<knowledge name="${item.name}">\n${item.content}\n</knowledge>`)
+    .join("\n\n");
+
+  const hasSystem = withAttachments.some((m) => m.role === "system");
+  if (hasSystem) {
+    return withAttachments.map((m) =>
+      m.role === "system" ? { ...m, content: `${bankContext}\n\n${m.content}` } : m
+    );
+  }
+
+  return [
+    { id: "knowledge-bank-context", role: "system", content: bankContext, createdAt: Date.now() },
+    ...withAttachments,
+  ];
 }
 
 export function useChat({
@@ -43,6 +63,7 @@ export function useChat({
   settings = DEFAULT_PROVIDER_SETTINGS,
   initialMessages = [],
   onMessagesChange,
+  knowledgeItems = [],
 }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -79,7 +100,7 @@ export function useChat({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ providerId, messages: buildApiHistory(history), settings }),
+          body: JSON.stringify({ providerId, messages: buildApiHistory(history, knowledgeItems), settings }),
           signal: controller.signal,
         });
 
@@ -139,7 +160,7 @@ export function useChat({
         abortRef.current = null;
       }
     },
-    [providerId, settings]
+    [providerId, settings, knowledgeItems]
   );
 
   const sendMessage = useCallback(

@@ -9,6 +9,8 @@ import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatWindow } from "@/components/chat/chat-window";
 import { useProviders } from "@/features/providers/use-providers";
 import { loadConversations, saveConversations, deriveTitle } from "@/features/chat/persistence";
+import { KnowledgePanel } from "@/components/chat/knowledge-panel";
+import { useKnowledgeBank } from "@/features/knowledge-bank/use-knowledge-bank";
 
 function createConversation(providerId: string, model: string): Conversation {
   const now = Date.now();
@@ -28,6 +30,17 @@ export default function Home() {
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = React.useState(true);
+  const {
+    items: knowledgeItems,
+    enabledItems: enabledKnowledgeItems,
+    addFiles: addKnowledgeFiles,
+    addText: addKnowledgeText,
+    removeItem: removeKnowledgeItem,
+    toggleEnabled: toggleKnowledgeItem,
+    error: knowledgeError,
+    setError: setKnowledgeError,
+  } = useKnowledgeBank();
 
   // Hydrate from localStorage once on mount.
   React.useEffect(() => {
@@ -104,12 +117,26 @@ export default function Home() {
                 if (messages === active.messages) return;
                 updateActiveConversation({ messages, title: deriveTitle({ ...active, messages }) });
               }}
+              knowledgeItems={enabledKnowledgeItems}
             />
           </>
         ) : (
           <EmptyState onNew={handleNew} />
         )}
       </div>
+      
+      {knowledgeOpen && (
+        <KnowledgePanel
+          items={knowledgeItems}
+          error={knowledgeError}
+          onAddFiles={addKnowledgeFiles}
+          onAddText={addKnowledgeText}
+          onRemove={removeKnowledgeItem}
+          onToggle={toggleKnowledgeItem}
+          onDismissError={() => setKnowledgeError(null)}
+          onClose={() => setKnowledgeOpen(false)}
+        />
+      )}
     </div>
   );
 }
