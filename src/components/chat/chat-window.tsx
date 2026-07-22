@@ -31,6 +31,7 @@ export function ChatWindow({
     settings,
     initialMessages,
     onMessagesChange,
+    knowledgeItems,
   });
 
   return (
