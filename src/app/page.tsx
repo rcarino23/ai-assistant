@@ -105,6 +105,8 @@ export default function Home() {
                 updateActiveConversation({ providerId, model: provider?.models[0]?.id ?? active.model });
               }}
               onModelChange={(model) => updateActiveConversation({ model })}
+              onToggleKnowledge={() => setKnowledgeOpen((v) => !v)}
+              knowledgeOpen={knowledgeOpen}
             />
             <ChatWindow
               key={active.id}
@@ -124,7 +126,7 @@ export default function Home() {
           <EmptyState onNew={handleNew} />
         )}
       </div>
-      
+
       {knowledgeOpen && (
         <KnowledgePanel
           items={knowledgeItems}

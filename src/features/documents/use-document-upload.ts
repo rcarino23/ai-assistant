@@ -6,9 +6,10 @@ import type { UploadedDocument, DocumentType } from "./types";
 import { isExtractableFile, isPreviewableMedia, readFileAsText } from "./extract-text";
 
 const MAX_FILES = 5;
-const MAX_TEXT_FILE_SIZE = 5 * 1024 * 1024; // 5MB — read fully into the prompt as text
-const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024; // 15MB — local preview only, never read into memory as text
-const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024; // 100MB — local preview only
+const MAX_TEXT_FILE_SIZE = 5 * 1024 * 1024;        // 5MB — read fully into the prompt as text
+const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024;      // 15MB — local preview only
+const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024;     // 100MB — local preview only
+const MAX_ATTACH_ONLY_FILE_SIZE = 25 * 1024 * 1024; // 25MB — attached but not parsed (pdf, docx, xlsx, other)
 
 function inferType(file: File): DocumentType {
   const ext = file.name.split(".").pop()?.toLowerCase();
@@ -31,7 +32,8 @@ function inferType(file: File): DocumentType {
 function maxSizeFor(file: File): number {
   if (file.type.startsWith("video/")) return MAX_VIDEO_FILE_SIZE;
   if (file.type.startsWith("image/") || file.type.startsWith("audio/")) return MAX_IMAGE_FILE_SIZE;
-  return MAX_TEXT_FILE_SIZE;
+  if (isExtractableFile(file)) return MAX_TEXT_FILE_SIZE;
+  return MAX_ATTACH_ONLY_FILE_SIZE;
 }
 
 function formatSize(bytes: number): string {
