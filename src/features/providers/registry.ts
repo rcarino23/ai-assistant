@@ -1,5 +1,6 @@
 import type { AIProvider } from "./types";
 import { AnthropicProvider } from "./anthropic-provider";
+import { OpenRouterProvider } from "./openrouter-provider";
 import { StubProvider } from "./stub-provider";
 
 /**
@@ -30,12 +31,7 @@ const providers: AIProvider[] = [
     [{ id: "llama-3.3-70b", label: "Llama 3.3 70B" }],
     "GROQ_API_KEY"
   ),
-  new StubProvider(
-    "openrouter",
-    "OpenRouter",
-    [{ id: "openrouter/auto", label: "Auto" }],
-    "OPENROUTER_API_KEY"
-  ),
+  new OpenRouterProvider(),
   new StubProvider(
     "ollama",
     "Ollama (local)",
