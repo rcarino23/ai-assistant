@@ -40,6 +40,7 @@ export default function Home() {
     toggleEnabled: toggleKnowledgeItem,
     error: knowledgeError,
     setError: setKnowledgeError,
+    addDatabaseSnapshot
   } = useKnowledgeBank();
 
   // Hydrate from localStorage once on mount.
@@ -137,6 +138,7 @@ export default function Home() {
           onToggle={toggleKnowledgeItem}
           onDismissError={() => setKnowledgeError(null)}
           onClose={() => setKnowledgeOpen(false)}
+          onAddDatabaseSnapshot={addDatabaseSnapshot}
         />
       )}
     </div>

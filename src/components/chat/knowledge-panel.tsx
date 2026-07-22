@@ -32,6 +32,7 @@ interface KnowledgePanelProps {
   onToggle: (id: string) => void;
   onDismissError: () => void;
   onClose?: () => void;
+  onAddDatabaseSnapshot: () => void;
 }
 
 export function KnowledgePanel({
@@ -43,6 +44,7 @@ export function KnowledgePanel({
   onToggle,
   onDismissError,
   onClose,
+  onAddDatabaseSnapshot
 }: KnowledgePanelProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [addingNote, setAddingNote] = React.useState(false);
@@ -90,6 +92,11 @@ export function KnowledgePanel({
           </Button>
           <Button variant="outline" size="sm" onClick={() => setAddingNote((v) => !v)}>
             <Plus className="h-3.5 w-3.5" /> Note
+          </Button>
+        </div>
+        <div className="mt-2 flex gap-2">
+          <Button variant="outline" size="sm" onClick={onAddDatabaseSnapshot}>
+            <Database className="h-3.5 w-100" /> Pull DB schema
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted">

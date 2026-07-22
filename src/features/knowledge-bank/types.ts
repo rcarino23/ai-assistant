@@ -4,6 +4,6 @@ export interface KnowledgeItem {
   content: string;
   sizeBytes: number;
   addedAt: number;
-  /** Whether this item is currently folded into outgoing requests. */
   enabled: boolean;
+  source?: "file" | "note" | "database";
 }

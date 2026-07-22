@@ -104,9 +104,29 @@ export function useKnowledgeBank() {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, enabled: !i.enabled } : i)));
   }, []);
 
+  const addDatabaseSnapshot = React.useCallback(async () => {
+    setError(null);
+    const res = await fetch("/api/database/schema");
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Failed to pull database schema.");
+      return;
+    }
+    const item: KnowledgeItem = {
+      id: uuid(),
+      name: `MySQL schema (${new Date().toLocaleString()})`,
+      content: data.text,
+      sizeBytes: data.text.length,
+      addedAt: Date.now(),
+      enabled: true,
+      source: "database",
+    };
+    setItems((prev) => [item, ...prev.filter((p) => p.source !== "database")]); // replace old snapshot
+  }, []);
+
   const clear = React.useCallback(() => setItems([]), []);
 
   const enabledItems = React.useMemo(() => items.filter((i) => i.enabled), [items]);
 
-  return { items, enabledItems, hydrated, addFiles, addText, removeItem, toggleEnabled, clear, error, setError };
+  return { items, enabledItems, hydrated, addFiles, addText, removeItem, toggleEnabled, clear, error, setError, addDatabaseSnapshot };
 }
