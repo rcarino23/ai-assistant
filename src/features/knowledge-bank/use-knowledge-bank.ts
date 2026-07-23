@@ -174,6 +174,32 @@ export function useKnowledgeBank() {
     }
   }, []);
 
+  const ALL_TABLES_PREFIX = "All tables";
+
+  const addAllTableData = React.useCallback(async (format: "json" | "csv") => {
+    setDbPulling(true);
+    try {
+      const res = await fetch(`/api/database/all-table-data?format=${format}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to pull all table data.");
+      }
+      const item: KnowledgeItem = {
+        id: uuid(),
+        name: `${ALL_TABLES_PREFIX}.${format} (${new Date().toLocaleString()})`,
+        content: data.text,
+        sizeBytes: data.text.length,
+        addedAt: Date.now(),
+        enabled: true,
+        source: "database",
+      };
+      // Replace a previous "all tables" pull; leave individual table pulls alone.
+      setItems((prev) => [item, ...prev.filter((p) => !p.name.startsWith(`${ALL_TABLES_PREFIX}.`))]);
+    } finally {
+      setDbPulling(false);
+    }
+  }, []);
+
   const clear = React.useCallback(() => setItems([]), []);
 
   const enabledItems = React.useMemo(() => items.filter((i) => i.enabled), [items]);
@@ -195,5 +221,6 @@ export function useKnowledgeBank() {
     dbTables,
     dbTablesLoading,
     fetchDbTables,
+    addAllTableData
   };
 }

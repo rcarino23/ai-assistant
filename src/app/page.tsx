@@ -56,6 +56,7 @@ export default function Home() {
     dbTables,
     dbTablesLoading,
     fetchDbTables,
+    addAllTableData
   } = useKnowledgeBank();
 
   React.useEffect(() => {
@@ -123,6 +124,18 @@ export default function Home() {
       }
     },
     [addTableData]
+  );
+
+  const handlePullAllTableData = React.useCallback(
+    async (format: "json" | "csv") => {
+      try {
+        await addAllTableData(format);
+        setDbToast(`All tables (${format.toUpperCase()}) pulled successfully.`);
+      } catch (err) {
+        setDbSchemaError(err instanceof Error ? err.message : "Failed to pull all table data.");
+      }
+    },
+    [addAllTableData]
   );
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
@@ -221,6 +234,7 @@ export default function Home() {
           dbTables={dbTables}
           dbTablesLoading={dbTablesLoading}
           onFetchDbTables={fetchDbTables}
+          onAddAllTableData={handlePullAllTableData}
         />
       )}
 

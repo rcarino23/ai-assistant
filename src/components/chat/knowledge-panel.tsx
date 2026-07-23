@@ -25,7 +25,7 @@ function iconFor(name: string) {
   return CODE_EXTENSIONS.has(ext) ? FileCode : FileText;
 }
 
-type PullMode = "schema" | "data";
+type PullMode = "schema" | "data" | "all-data";
 type DataFormat = "json" | "csv";
 
 interface KnowledgePanelProps {
@@ -43,6 +43,7 @@ interface KnowledgePanelProps {
   dbTables: string[];
   dbTablesLoading: boolean;
   onFetchDbTables: () => void;
+  onAddAllTableData: (format: DataFormat) => void;
 }
 
 export function KnowledgePanel({
@@ -60,6 +61,7 @@ export function KnowledgePanel({
   dbTables,
   dbTablesLoading,
   onFetchDbTables,
+  onAddAllTableData
 }: KnowledgePanelProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [addingNote, setAddingNote] = React.useState(false);
@@ -90,6 +92,8 @@ export function KnowledgePanel({
   const handlePull = () => {
     if (pullMode === "schema") {
       onAddDatabaseSnapshot();
+    } else if (pullMode === "all-data") {
+      onAddAllTableData(dataFormat);
     } else if (selectedTable) {
       onAddTableData(selectedTable, dataFormat);
     }
@@ -138,15 +142,12 @@ export function KnowledgePanel({
 
         <div className="mt-3 space-y-2 rounded-xl border border-border p-2.5">
           <div className="flex gap-2">
-            <Select
-              value={pullMode}
-              onChange={(e) => handleModeChange(e.target.value as PullMode)}
-              className="flex-1"
-            >
+            <Select value={pullMode} onChange={(e) => handleModeChange(e.target.value as PullMode)} className="flex-1">
               <option value="schema">Schema</option>
               <option value="data">Table data</option>
+              <option value="all-data">All tables</option>
             </Select>
-            {pullMode === "data" && (
+            {(pullMode === "data" || pullMode === "all-data") && (
               <Select value={dataFormat} onChange={(e) => setDataFormat(e.target.value as DataFormat)}>
                 <option value="json">JSON</option>
                 <option value="csv">CSV</option>
@@ -178,7 +179,9 @@ export function KnowledgePanel({
               ? "Pulling…"
               : pullMode === "schema"
                 ? "Pull schema"
-                : `Pull ${dataFormat.toUpperCase()} data`}
+                : pullMode === "all-data"
+                  ? `Pull all tables (${dataFormat.toUpperCase()})`
+                  : `Pull ${dataFormat.toUpperCase()} data`}
           </Button>
         </div>
 
