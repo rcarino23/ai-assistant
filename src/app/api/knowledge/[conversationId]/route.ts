@@ -3,7 +3,11 @@ import { clearKnowledgeItems } from "@/features/knowledge-bank/server-store";
 
 export const runtime = "nodejs";
 
-export async function DELETE(_req: NextRequest, { params }: { params: { conversationId: string } }) {
-  clearKnowledgeItems(params.conversationId);
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ conversationId: string }> }
+) {
+  const { conversationId } = await params;
+  clearKnowledgeItems(conversationId);
   return NextResponse.json({ ok: true });
 }
