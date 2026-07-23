@@ -109,7 +109,7 @@ export function useChat({
       // Accumulated deterministically alongside the streaming setMessages
       // calls, so the final parent-sync payload below is built directly
       // from known values instead of depending on when React commits state.
-      const assistantContent = "";
+      let assistantContent = "";
       let finalStatus: MessageStatus = "streaming";
 
       const finish = () => {
@@ -171,6 +171,7 @@ export function useChat({
             const event = JSON.parse(json) as StreamEvent;
 
             if (event.type === "text") {
+              assistantContent += event.text;   // add this line
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
