@@ -53,6 +53,17 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(0)}MB`;
 }
 
+const MAX_EXTRACTED_TEXT_CHARS = 120_000; // stays safely under context limits even on long chats
+
+function truncateExtractedText(text: string, fileName: string): string {
+  if (text.length <= MAX_EXTRACTED_TEXT_CHARS) return text;
+  return (
+    text.slice(0, MAX_EXTRACTED_TEXT_CHARS) +
+    `\n\n[...truncated — "${fileName}" was ${text.length.toLocaleString()} characters; ` +
+    `only the first ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} were kept.]`
+  );
+}
+
 export function useDocumentUpload() {
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +130,7 @@ export function useDocumentUpload() {
         // Plain text-ish files: read into the prompt as context.
         if (isExtractableFile(file)) {
           try {
-            const text = await readFileAsText(file);
+            const text = truncateExtractedText(await readFileAsText(file), file.name);
             setDocuments((prev) => [...prev, { ...doc, extractedText: text }]);
           } catch {
             setError(`Couldn't read "${file.name}".`);

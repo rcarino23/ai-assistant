@@ -48,12 +48,30 @@ export class AnthropicProvider implements AIProvider {
       throw new ProviderNotConfiguredError(this.id);
     }
 
+    function buildMessageContent(m: ChatMessage): string | Anthropic.MessageParam["content"] {
+    const textDocs = (m.attachments ?? []).filter((a) => a.selectedAsContext && a.extractedText);
+    if (textDocs.length === 0) return m.content;
+
+      const blocks: Anthropic.ContentBlockParam[] = textDocs.map((doc) => ({
+        type: "document",
+        title: doc.name,
+        source: {
+          type: "text",
+          media_type: "text/plain",
+          data: doc.extractedText,
+        },
+      }));
+
+      if (m.content) blocks.push({ type: "text", text: m.content });
+      return blocks;
+    }
+
     const systemMessage = messages.find((m) => m.role === "system");
     let conversation: Anthropic.MessageParam[] = messages
       .filter((m) => m.role !== "system")
       .map((m) => ({
         role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-        content: m.content,
+        content: buildMessageContent(m),
       }));
 
     const client = this.client();
@@ -67,14 +85,14 @@ export class AnthropicProvider implements AIProvider {
           yield { type: "activity", id: "thinking", label: "Thinking…", status: "active" };
         }
 
-        const stream = client.messages.stream(
+        const stream = client.beta.messages.stream(
           {
             model: settings.model || "claude-sonnet-4-6",
             max_tokens: settings.maxTokens ?? 4096,
             temperature: settings.temperature ?? 0.7,
             top_p: settings.topP ?? 1,
             system: systemMessage?.content,
-            messages: conversation,
+            messages: conversation as Anthropic.Beta.BetaMessageParam[],
             tools,
           },
           { signal }
