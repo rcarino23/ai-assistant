@@ -25,19 +25,18 @@ type StreamEvent =
   | { type: "error"; message: string };
 
 /**
- * Only handles per-message attachments now. Data-bank ("knowledge") context
- * is merged server-side (see /api/chat) so it doesn't need to be folded
- * into every message here.
+ * Keep per-message attachments as structured data on the message and do not
+ * inline their extracted text into the prompt body. Providers that support
+ * attachments can consume them directly; others simply ignore them.
  */
-function withAttachmentContext(history: ChatMessage[]): ChatMessage[] {
-  return history.map((m) => {
-    const contextBlocks = (m.attachments ?? [])
-      .filter((d) => d.selectedAsContext && d.extractedText)
-      .map((d) => `<document name="${d.name}">\n${d.extractedText}\n</document>`)
-      .join("\n\n");
+function stripEmbeddedAttachmentContext(content: string): string {
+  return content.replace(/<document name="[^"]*">[\s\S]*?<\/document>\s*/g, "").trim();
+}
 
-    if (!contextBlocks) return m;
-    return { ...m, content: m.content ? `${contextBlocks}\n\n${m.content}` : contextBlocks };
+function normalizeMessagesForProvider(history: ChatMessage[]): ChatMessage[] {
+  return history.map((m) => {
+    const cleanedContent = stripEmbeddedAttachmentContext(m.content);
+    return cleanedContent === m.content ? m : { ...m, content: cleanedContent };
   });
 }
 
@@ -124,8 +123,10 @@ export function useChat({
           status: finalStatus,
           model: settings.model,
         };
-        notifyParent([...history, finalMessage]);
+        notifyParent([...normalizedHistory, finalMessage]);
       };
+
+      const normalizedHistory = normalizeMessagesForProvider(history);
 
       try {
         const res = await fetch("/api/chat", {
@@ -133,7 +134,7 @@ export function useChat({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             providerId,
-            messages: history,
+            messages: normalizedHistory,
             settings,
             conversationId,
             ...(shouldSyncKnowledge ? { knowledgeItems } : {}),
@@ -255,9 +256,10 @@ export function useChat({
         attachments: documents.length > 0 ? documents : undefined,
       };
       const history = [...messages, userMessage];
-      setMessages(history);
-      notifyParent(history);
-      void runCompletion(history);
+      const normalizedHistory = normalizeMessagesForProvider(history);
+      setMessages(normalizedHistory);
+      notifyParent(normalizedHistory);
+      void runCompletion(normalizedHistory);
     },
     [messages, isStreaming, runCompletion, notifyParent]
   );
@@ -272,9 +274,10 @@ export function useChat({
     if (lastAssistantIdx === -1) return;
     const cutIdx = messages.length - 1 - lastAssistantIdx;
     const history = messages.slice(0, cutIdx);
-    setMessages(history);
-    notifyParent(history);
-    void runCompletion(history);
+    const normalizedHistory = normalizeMessagesForProvider(history);
+    setMessages(normalizedHistory);
+    notifyParent(normalizedHistory);
+    void runCompletion(normalizedHistory);
   }, [isStreaming, messages, runCompletion, notifyParent]);
 
   const editMessage = useCallback(
@@ -283,9 +286,10 @@ export function useChat({
       const idx = messages.findIndex((m) => m.id === id);
       if (idx === -1) return;
       const history = [...messages.slice(0, idx), { ...messages[idx], content: newContent }];
-      setMessages(history);
-      notifyParent(history);
-      void runCompletion(history);
+      const normalizedHistory = normalizeMessagesForProvider(history);
+      setMessages(normalizedHistory);
+      notifyParent(normalizedHistory);
+      void runCompletion(normalizedHistory);
     },
     [isStreaming, messages, runCompletion, notifyParent]
   );
@@ -297,9 +301,10 @@ export function useChat({
       if (idx === -1) return;
       const cutIdx = messages[idx].role === "assistant" ? idx : idx + 1;
       const history = messages.slice(0, cutIdx);
-      setMessages(history);
-      notifyParent(history);
-      void runCompletion(history);
+      const normalizedHistory = normalizeMessagesForProvider(history);
+      setMessages(normalizedHistory);
+      notifyParent(normalizedHistory);
+      void runCompletion(normalizedHistory);
     },
     [isStreaming, messages, runCompletion, notifyParent]
   );

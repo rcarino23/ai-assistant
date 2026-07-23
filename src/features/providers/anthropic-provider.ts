@@ -10,6 +10,11 @@ const MODELS: ModelInfo[] = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", contextWindow: 200_000 },
 ];
 
+type AnthropicMessageContentBlock = {
+  type: string;
+  [key: string]: unknown;
+};
+
 const DATABASE_TOOL: Anthropic.Tool = {
   name: "query_database",
   description:
@@ -48,11 +53,11 @@ export class AnthropicProvider implements AIProvider {
       throw new ProviderNotConfiguredError(this.id);
     }
 
-    function buildMessageContent(m: ChatMessage): string | Anthropic.MessageParam["content"] {
-    const textDocs = (m.attachments ?? []).filter((a) => a.selectedAsContext && a.extractedText);
-    if (textDocs.length === 0) return m.content;
+    function buildMessageContent(m: ChatMessage): string | AnthropicMessageContentBlock[] {
+      const textDocs = (m.attachments ?? []).filter((a) => a.selectedAsContext && a.extractedText);
+      if (textDocs.length === 0) return m.content;
 
-      const blocks: Anthropic.ContentBlockParam[] = textDocs.map((doc) => ({
+      const blocks: AnthropicMessageContentBlock[] = textDocs.map((doc) => ({
         type: "document",
         title: doc.name,
         source: {
@@ -71,7 +76,7 @@ export class AnthropicProvider implements AIProvider {
       .filter((m) => m.role !== "system")
       .map((m) => ({
         role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-        content: buildMessageContent(m),
+        content: buildMessageContent(m) as Anthropic.MessageParam["content"],
       }));
 
     const client = this.client();
@@ -85,14 +90,14 @@ export class AnthropicProvider implements AIProvider {
           yield { type: "activity", id: "thinking", label: "Thinking…", status: "active" };
         }
 
-        const stream = client.beta.messages.stream(
+        const stream = client.messages.stream(
           {
             model: settings.model || "claude-sonnet-4-6",
             max_tokens: settings.maxTokens ?? 4096,
             temperature: settings.temperature ?? 0.7,
             top_p: settings.topP ?? 1,
             system: systemMessage?.content,
-            messages: conversation as Anthropic.Beta.BetaMessageParam[],
+            messages: conversation as Anthropic.MessageParam[],
             tools,
           },
           { signal }
