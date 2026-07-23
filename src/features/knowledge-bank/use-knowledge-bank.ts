@@ -7,8 +7,8 @@ import { loadKnowledgeItems, saveKnowledgeItems } from "./persistence";
 
 const MAX_ITEMS = 20;
 const MAX_ITEM_SIZE = 2 * 1024 * 1024; // 2MB — this gets inlined into every prompt
+const SCHEMA_ITEM_PREFIX = "DB schema";
 
-// Formats we can't sensibly read as text in the browser yet.
 const BINARY_EXTENSIONS = new Set([
   "pdf", "docx", "xlsx", "png", "jpg", "jpeg", "gif", "webp",
   "mp4", "mov", "mp3", "wav", "zip",
@@ -36,6 +36,11 @@ export function useKnowledgeBank() {
   const [hydrated, setHydrated] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [dbPulling, setDbPulling] = React.useState(false);
+
+  // Table list for the "Table data" picker — fetched lazily the first time
+  // that mode is selected, not on every panel render.
+  const [dbTables, setDbTables] = React.useState<string[]>([]);
+  const [dbTablesLoading, setDbTablesLoading] = React.useState(false);
 
   React.useEffect(() => {
     setItems(loadKnowledgeItems());
@@ -105,6 +110,21 @@ export function useKnowledgeBank() {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, enabled: !i.enabled } : i)));
   }, []);
 
+  const fetchDbTables = React.useCallback(async () => {
+    setDbTablesLoading(true);
+    try {
+      const res = await fetch("/api/database/schema");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load table list.");
+      const names = ((data.snapshot?.tables ?? []) as { name: string }[]).map((t) => t.name);
+      setDbTables(names);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load table list.");
+    } finally {
+      setDbTablesLoading(false);
+    }
+  }, []);
+
   const addDatabaseSnapshot = React.useCallback(async () => {
     setDbPulling(true);
     try {
@@ -115,14 +135,40 @@ export function useKnowledgeBank() {
       }
       const item: KnowledgeItem = {
         id: uuid(),
-        name: `MySQL schema (${new Date().toLocaleString()})`,
+        name: `${SCHEMA_ITEM_PREFIX} (${new Date().toLocaleString()})`,
         content: data.text,
         sizeBytes: data.text.length,
         addedAt: Date.now(),
         enabled: true,
         source: "database",
       };
-      setItems((prev) => [item, ...prev.filter((p) => p.source !== "database")]); // replace old snapshot
+      // Only replace a previous *schema* snapshot — table-data pulls use a
+      // different name prefix, so they're untouched.
+      setItems((prev) => [item, ...prev.filter((p) => !p.name.startsWith(SCHEMA_ITEM_PREFIX))]);
+    } finally {
+      setDbPulling(false);
+    }
+  }, []);
+
+  const addTableData = React.useCallback(async (table: string, format: "json" | "csv") => {
+    setDbPulling(true);
+    try {
+      const res = await fetch(`/api/database/table-data?table=${encodeURIComponent(table)}&format=${format}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to pull data for "${table}".`);
+      }
+      const item: KnowledgeItem = {
+        id: uuid(),
+        name: `${table}.${format} (${new Date().toLocaleString()})`,
+        content: data.text,
+        sizeBytes: data.text.length,
+        addedAt: Date.now(),
+        enabled: true,
+        source: "database",
+      };
+      // Replace a previous pull of the *same* table+format, keep others.
+      setItems((prev) => [item, ...prev.filter((p) => p.name !== item.name && !p.name.startsWith(`${table}.${format} (`))]);
     } finally {
       setDbPulling(false);
     }
@@ -132,5 +178,22 @@ export function useKnowledgeBank() {
 
   const enabledItems = React.useMemo(() => items.filter((i) => i.enabled), [items]);
 
-  return { items, enabledItems, hydrated, addFiles, addText, removeItem, toggleEnabled, clear, error, setError, addDatabaseSnapshot, dbPulling };
+  return {
+    items,
+    enabledItems,
+    hydrated,
+    addFiles,
+    addText,
+    removeItem,
+    toggleEnabled,
+    clear,
+    error,
+    setError,
+    addDatabaseSnapshot,
+    addTableData,
+    dbPulling,
+    dbTables,
+    dbTablesLoading,
+    fetchDbTables,
+  };
 }

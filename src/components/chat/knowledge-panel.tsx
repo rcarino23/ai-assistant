@@ -5,6 +5,7 @@ import { Database, FileCode, FileText, Loader2, Plus, Trash2, Upload, X } from "
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,9 @@ function iconFor(name: string) {
   return CODE_EXTENSIONS.has(ext) ? FileCode : FileText;
 }
 
+type PullMode = "schema" | "data";
+type DataFormat = "json" | "csv";
+
 interface KnowledgePanelProps {
   items: KnowledgeItem[];
   error: string | null;
@@ -34,7 +38,11 @@ interface KnowledgePanelProps {
   onDismissError: () => void;
   onClose?: () => void;
   onAddDatabaseSnapshot: () => void;
+  onAddTableData: (table: string, format: DataFormat) => void;
   dbPulling: boolean;
+  dbTables: string[];
+  dbTablesLoading: boolean;
+  onFetchDbTables: () => void;
 }
 
 export function KnowledgePanel({
@@ -47,12 +55,20 @@ export function KnowledgePanel({
   onDismissError,
   onClose,
   onAddDatabaseSnapshot,
-  dbPulling
+  onAddTableData,
+  dbPulling,
+  dbTables,
+  dbTablesLoading,
+  onFetchDbTables,
 }: KnowledgePanelProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [addingNote, setAddingNote] = React.useState(false);
   const [noteTitle, setNoteTitle] = React.useState("");
   const [noteBody, setNoteBody] = React.useState("");
+
+  const [pullMode, setPullMode] = React.useState<PullMode>("schema");
+  const [dataFormat, setDataFormat] = React.useState<DataFormat>("json");
+  const [selectedTable, setSelectedTable] = React.useState("");
 
   const enabledCount = items.filter((i) => i.enabled).length;
 
@@ -63,6 +79,23 @@ export function KnowledgePanel({
     setNoteBody("");
     setAddingNote(false);
   };
+
+  const handleModeChange = (mode: PullMode) => {
+    setPullMode(mode);
+    if (mode === "data" && dbTables.length === 0 && !dbTablesLoading) {
+      onFetchDbTables();
+    }
+  };
+
+  const handlePull = () => {
+    if (pullMode === "schema") {
+      onAddDatabaseSnapshot();
+    } else if (selectedTable) {
+      onAddTableData(selectedTable, dataFormat);
+    }
+  };
+
+  const pullDisabled = dbPulling || (pullMode === "data" && !selectedTable);
 
   return (
     <aside
@@ -102,21 +135,53 @@ export function KnowledgePanel({
             <Plus className="h-3.5 w-3.5" /> Note
           </Button>
         </div>
-        <div className="mt-2 flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onAddDatabaseSnapshot}
-            disabled={dbPulling}
-          >
-            {dbPulling ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Database className="h-3.5 w-3.5" />
+
+        <div className="mt-3 space-y-2 rounded-xl border border-border p-2.5">
+          <div className="flex gap-2">
+            <Select
+              value={pullMode}
+              onChange={(e) => handleModeChange(e.target.value as PullMode)}
+              className="flex-1"
+            >
+              <option value="schema">Schema</option>
+              <option value="data">Table data</option>
+            </Select>
+            {pullMode === "data" && (
+              <Select value={dataFormat} onChange={(e) => setDataFormat(e.target.value as DataFormat)}>
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+              </Select>
             )}
-            {dbPulling ? "Pulling schema…" : "Pull DB schema"}
+          </div>
+
+          {pullMode === "data" && (
+            <Select
+              value={selectedTable}
+              onChange={(e) => setSelectedTable(e.target.value)}
+              className="w-full"
+              disabled={dbTablesLoading || dbTables.length === 0}
+            >
+              <option value="">
+                {dbTablesLoading ? "Loading tables…" : dbTables.length === 0 ? "No tables found" : "Select a table"}
+              </option>
+              {dbTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          )}
+
+          <Button variant="outline" size="sm" className="w-full" onClick={handlePull} disabled={pullDisabled}>
+            {dbPulling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+            {dbPulling
+              ? "Pulling…"
+              : pullMode === "schema"
+                ? "Pull schema"
+                : `Pull ${dataFormat.toUpperCase()} data`}
           </Button>
         </div>
+
         <p className="mt-2 text-xs text-muted">
           {enabledCount > 0
             ? `${enabledCount} item${enabledCount === 1 ? "" : "s"} will be sent as context with every message.`

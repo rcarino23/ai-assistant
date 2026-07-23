@@ -115,27 +115,35 @@ export async function getSchemaSnapshot(sampleRowsPerTable = 3): Promise<Databas
 
   const tableRows = await connectedPool
     .request()
-    .query<{ TABLE_NAME: string }>(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'`);
+    .query<{ TABLE_SCHEMA: string; TABLE_NAME: string }>(
+      `SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'`
+    );
 
   const tables: TableSchema[] = [];
 
   for (const row of tableRows.recordset) {
-    const tableName = row.TABLE_NAME;
+    const rawSchema = row.TABLE_SCHEMA;
+    const rawTable = row.TABLE_NAME;
+    // Schema-qualify the display/storage name (e.g. "Transactions.Payrolls")
+    // so downstream table-data pulls know which schema to query — this DB
+    // has many tables that only exist under a non-dbo schema.
+    const qualifiedName = `${rawSchema}.${rawTable}`;
 
     const columnRows = await connectedPool
       .request()
-      .input("tableName", sql.NVarChar, tableName)
+      .input("tableName", sql.NVarChar, rawTable)
+      .input("tableSchema", sql.NVarChar, rawSchema)
       .query(`
         SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
           CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 'PRI' ELSE '' END AS COLUMN_KEY
         FROM INFORMATION_SCHEMA.COLUMNS c
         LEFT JOIN (
-          SELECT ku.TABLE_NAME, ku.COLUMN_NAME
+          SELECT ku.TABLE_SCHEMA, ku.TABLE_NAME, ku.COLUMN_NAME
           FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
           JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
             ON tc.CONSTRAINT_TYPE = 'PRIMARY KEY' AND tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
-        ) pk ON pk.TABLE_NAME = c.TABLE_NAME AND pk.COLUMN_NAME = c.COLUMN_NAME
-        WHERE c.TABLE_NAME = @tableName
+        ) pk ON pk.TABLE_SCHEMA = c.TABLE_SCHEMA AND pk.TABLE_NAME = c.TABLE_NAME AND pk.COLUMN_NAME = c.COLUMN_NAME
+        WHERE c.TABLE_NAME = @tableName AND c.TABLE_SCHEMA = @tableSchema
         ORDER BY c.ORDINAL_POSITION
       `);
 
@@ -149,15 +157,17 @@ export async function getSchemaSnapshot(sampleRowsPerTable = 3): Promise<Databas
     let sampleRows: Record<string, unknown>[] | undefined;
     if (sampleRowsPerTable > 0) {
       try {
-        // Table name came from INFORMATION_SCHEMA, not user input — safe to interpolate.
-        const sample = await connectedPool.request().query(`SELECT TOP ${sampleRowsPerTable} * FROM [${tableName}]`);
+        // Both parts came from INFORMATION_SCHEMA, not user input — safe to interpolate.
+        const sample = await connectedPool
+          .request()
+          .query(`SELECT TOP ${sampleRowsPerTable} * FROM [${rawSchema}].[${rawTable}]`);
         sampleRows = sample.recordset as Record<string, unknown>[];
       } catch {
         sampleRows = undefined;
       }
     }
 
-    tables.push({ name: tableName, columns, sampleRows });
+    tables.push({ name: qualifiedName, columns, sampleRows });
   }
 
   return { database, tables, generatedAt: Date.now() };

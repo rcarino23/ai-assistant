@@ -51,7 +51,11 @@ export default function Home() {
     error: knowledgeError,
     setError: setKnowledgeError,
     addDatabaseSnapshot,
-    dbPulling
+    addTableData,
+    dbPulling,
+    dbTables,
+    dbTablesLoading,
+    fetchDbTables,
   } = useKnowledgeBank();
 
   React.useEffect(() => {
@@ -108,6 +112,18 @@ export default function Home() {
       setDbSchemaError(err instanceof Error ? err.message : "Failed to pull database schema.");
     }
   }, [addDatabaseSnapshot]);
+
+  const handlePullTableData = React.useCallback(
+    async (table: string, format: "json" | "csv") => {
+      try {
+        await addTableData(table, format);
+        setDbToast(`${table} (${format.toUpperCase()}) pulled successfully.`);
+      } catch (err) {
+        setDbSchemaError(err instanceof Error ? err.message : `Failed to pull data for "${table}".`);
+      }
+    },
+    [addTableData]
+  );
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const activeProvider = providers.find((p) => p.id === active?.providerId);
@@ -200,7 +216,11 @@ export default function Home() {
           onDismissError={() => setKnowledgeError(null)}
           onClose={() => setKnowledgeOpen(false)}
           onAddDatabaseSnapshot={handlePullDbSchema}
+          onAddTableData={handlePullTableData}
           dbPulling={dbPulling}
+          dbTables={dbTables}
+          dbTablesLoading={dbTablesLoading}
+          onFetchDbTables={fetchDbTables}
         />
       )}
 
