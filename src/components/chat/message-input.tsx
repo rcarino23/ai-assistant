@@ -59,7 +59,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+    <div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-4 sm:pb-4">
       {disabled && disabledReason && (
         <p className="mb-2 text-center text-xs text-muted">{disabledReason}</p>
       )}

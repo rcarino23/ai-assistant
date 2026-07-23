@@ -9,21 +9,25 @@ import { IconButton } from "@/components/ui/icon-button";
 interface SidebarProps {
   conversations: Conversation[];
   activeId: string | null;
+  open: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
   onTogglePin: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onClose: () => void;
 }
 
 export function Sidebar({
   conversations,
   activeId,
+  open,
   onSelect,
   onNew,
   onDelete,
   onTogglePin,
   onRename,
+  onClose,
 }: SidebarProps) {
   const [query, setQuery] = React.useState("");
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -51,12 +55,23 @@ export function Sidebar({
   const recent = filtered.filter((c) => !c.pinned);
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-surface">
-      <div className="flex items-center gap-2 px-4 py-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-ink">
-          <Sparkles className="h-4 w-4" />
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-40 flex h-full w-72 max-w-[85vw] shrink-0 flex-col border-r border-border bg-surface shadow-soft transition-transform duration-200 ease-in-out",
+        "md:static md:z-auto md:w-72 md:max-w-none md:translate-x-0 md:shadow-none",
+        open ? "translate-x-0" : "-translate-x-full"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2 px-4 py-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-ink">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-semibold">AI Assistant</span>
         </div>
-        <span className="text-sm font-semibold">AI Assistant</span>
+        <IconButton label="Close menu" onClick={onClose} className="md:hidden">
+          <X className="h-4 w-4" />
+        </IconButton>
       </div>
 
       <div className="px-3">

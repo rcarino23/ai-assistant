@@ -41,7 +41,7 @@ export function MessageItem({ message, isLastAssistant, onEdit, onRetry, onRegen
   return (
     <div
       className={cn(
-        "group flex w-full animate-fade-in gap-3 px-4 py-3",
+        "group flex w-full animate-fade-in gap-3 px-3 py-3 sm:px-4",
         isUser ? "justify-end" : "justify-start"
       )}
     >
@@ -51,7 +51,7 @@ export function MessageItem({ message, isLastAssistant, onEdit, onRetry, onRegen
         </div>
       )}
 
-      <div className={cn("flex max-w-[75ch] flex-col", isUser && "items-end")}>
+      <div className={cn("flex max-w-[88vw] sm:max-w-[75ch] flex-col", isUser && "items-end")}>
         {editing ? (
           <div className="w-full min-w-[280px] rounded-2xl border border-accent bg-surface p-3 shadow-soft">
             <Textarea

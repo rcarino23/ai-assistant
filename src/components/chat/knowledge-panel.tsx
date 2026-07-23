@@ -6,6 +6,7 @@ import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const CODE_EXTENSIONS = new Set([
   "js", "jsx", "ts", "tsx", "py", "java", "c", "cpp", "cs", "go", "rb",
@@ -62,7 +63,12 @@ export function KnowledgePanel({
   };
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-surface">
+    <aside
+      className={cn(
+        "fixed inset-y-0 right-0 z-40 flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-l border-border bg-surface shadow-soft",
+        "lg:static lg:z-auto lg:shadow-none"
+      )}
+    >
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Database className="h-4 w-4 text-accent" />
@@ -96,7 +102,7 @@ export function KnowledgePanel({
         </div>
         <div className="mt-2 flex gap-2">
           <Button variant="outline" size="sm" onClick={onAddDatabaseSnapshot}>
-            <Database className="h-3.5 w-100" /> Pull DB schema
+            <Database className="h-3.5 w-3.5" /> Pull DB schema
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted">

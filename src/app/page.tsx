@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { v4 as uuid } from "uuid";
+import { Menu } from "lucide-react";
 import type { ChatMessage, Conversation } from "@/types";
 import { DEFAULT_PROVIDER_SETTINGS } from "@/types";
 import { Sidebar } from "@/components/chat/sidebar";
@@ -11,6 +12,7 @@ import { useProviders } from "@/features/providers/use-providers";
 import { loadConversations, saveConversations, deriveTitle } from "@/features/chat/persistence";
 import { KnowledgePanel } from "@/components/chat/knowledge-panel";
 import { useKnowledgeBank } from "@/features/knowledge-bank/use-knowledge-bank";
+import { IconButton } from "@/components/ui/icon-button";
 
 function createConversation(providerId: string, model: string): Conversation {
   const now = Date.now();
@@ -30,6 +32,9 @@ export default function Home() {
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
+  // Off-canvas on mobile, static on md+/lg+ regardless of this state
+  // (handled entirely with CSS breakpoints, see Sidebar/KnowledgePanel).
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = React.useState(true);
   const {
     items: knowledgeItems,
@@ -40,10 +45,9 @@ export default function Home() {
     toggleEnabled: toggleKnowledgeItem,
     error: knowledgeError,
     setError: setKnowledgeError,
-    addDatabaseSnapshot
+    addDatabaseSnapshot,
   } = useKnowledgeBank();
 
-  // Hydrate from localStorage once on mount.
   React.useEffect(() => {
     const stored = loadConversations();
     setConversations(stored);
@@ -51,7 +55,6 @@ export default function Home() {
     setHydrated(true);
   }, []);
 
-  // Persist whenever conversations change (after hydration).
   React.useEffect(() => {
     if (hydrated) saveConversations(conversations);
   }, [conversations, hydrated]);
@@ -62,12 +65,17 @@ export default function Home() {
     const conversation = createConversation(defaultProviderId, DEFAULT_PROVIDER_SETTINGS.model);
     setConversations((prev) => [conversation, ...prev]);
     setActiveId(conversation.id);
+    setSidebarOpen(false);
+  };
+
+  const handleSelect = (id: string) => {
+    setActiveId(id);
+    setSidebarOpen(false); // auto-close the drawer on mobile after picking a chat
   };
 
   const handleDelete = (id: string) => {
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
-    // Free the server-side knowledge cache for this conversation.
     void fetch(`/api/knowledge/${id}`, { method: "DELETE" }).catch(() => {});
   };
 
@@ -92,15 +100,28 @@ export default function Home() {
   if (!hydrated) return null;
 
   return (
-    <div className="flex h-screen w-full bg-canvas">
+    <div className="flex h-screen w-full overflow-hidden bg-canvas">
+      {/* Backdrop for either drawer on mobile/tablet */}
+      {(sidebarOpen || knowledgeOpen) && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => {
+            setSidebarOpen(false);
+            setKnowledgeOpen(false);
+          }}
+        />
+      )}
+
       <Sidebar
         conversations={conversations}
         activeId={activeId}
-        onSelect={setActiveId}
+        open={sidebarOpen}
+        onSelect={handleSelect}
         onNew={handleNew}
         onDelete={handleDelete}
         onTogglePin={handleTogglePin}
         onRename={handleRename}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -117,6 +138,7 @@ export default function Home() {
               onModelChange={(model) => updateActiveConversation({ model })}
               onToggleKnowledge={() => setKnowledgeOpen((v) => !v)}
               knowledgeOpen={knowledgeOpen}
+              onToggleSidebar={() => setSidebarOpen(true)}
             />
             <div className="min-h-0 flex-1">
               <ChatWindow
@@ -138,7 +160,17 @@ export default function Home() {
             </div>
           </>
         ) : (
-          <EmptyState onNew={handleNew} />
+          <>
+            {/* No ChatHeader when there's no active conversation, so give
+                mobile a way to reach the sidebar here too. */}
+            <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-4 md:hidden">
+              <IconButton label="Open menu" onClick={() => setSidebarOpen(true)}>
+                <Menu className="h-4 w-4" />
+              </IconButton>
+              <span className="text-sm font-semibold text-ink">AI Assistant</span>
+            </div>
+            <EmptyState onNew={handleNew} />
+          </>
         )}
       </div>
 
@@ -161,7 +193,7 @@ export default function Home() {
 
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3">
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
       <p className="text-base font-medium text-ink">No chat selected</p>
       <button onClick={onNew} className="text-sm text-accent underline underline-offset-2">
         Start a new chat
