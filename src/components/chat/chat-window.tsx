@@ -6,6 +6,7 @@ import type { ChatMessage, ProviderSettings } from "@/types";
 import { useChat } from "@/features/chat/hooks/use-chat";
 import { MessageList } from "./message-list";
 import { MessageInput } from "./message-input";
+import { ErrorModal } from "./error-modal";
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 
 interface ChatWindowProps {
@@ -29,7 +30,17 @@ export function ChatWindow({
   onMessagesChange,
   knowledgeItems,
 }: ChatWindowProps) {
-  const { messages, isStreaming, error, sendMessage, stop, regenerate, editMessage, retryMessage } = useChat({
+  const {
+    messages,
+    isStreaming,
+    error,
+    sendMessage,
+    stop,
+    regenerate,
+    editMessage,
+    retryMessage,
+    dismissError,
+  } = useChat({
     providerId,
     conversationId,
     settings,
@@ -38,6 +49,11 @@ export function ChatWindow({
     knowledgeItems,
   });
 
+  // The failed turn always leaves an assistant message behind (see
+  // useChat.runCompletion), so regenerate() has something to re-run from
+  // whenever an error is showing.
+  const canRetry = messages.some((m) => m.role === "assistant");
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -45,7 +61,7 @@ export function ChatWindow({
       </div>
 
       {error && (
-        <p className="mx-auto mb-2 w-full max-w-3xl px-4 text-center text-xs text-red-500">{error}</p>
+        <ErrorModal message={error} onClose={dismissError} onRetry={canRetry ? regenerate : undefined} />
       )}
 
       <MessageInput

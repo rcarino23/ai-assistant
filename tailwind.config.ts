@@ -35,10 +35,15 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0" },
         },
+        "modal-in": {
+          "0%": { opacity: "0", transform: "scale(0.96) translateY(6px)" },
+          "100%": { opacity: "1", transform: "scale(1) translateY(0)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.2s ease-out",
         blink: "blink 1s step-start infinite",
+        "modal-in": "modal-in 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
       },
     },
   },
