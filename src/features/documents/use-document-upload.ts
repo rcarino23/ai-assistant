@@ -29,6 +29,18 @@ function inferType(file: File): DocumentType {
   }
 }
 
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function maxSizeFor(file: File): number {
   if (file.type.startsWith("video/")) return MAX_VIDEO_FILE_SIZE;
   if (file.type.startsWith("image/") || file.type.startsWith("audio/")) return MAX_IMAGE_FILE_SIZE;
@@ -86,7 +98,21 @@ export function useDocumentUpload() {
         if (isPreviewableMedia(file)) {
           const previewUrl = URL.createObjectURL(file);
           previewUrls.current.add(previewUrl);
-          setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
+
+          if (file.type.startsWith("image/")) {
+            // Images: also read the actual bytes so they can be sent to the model.
+            try {
+              const base64Data = await readFileAsBase64(file);
+              const newDoc = { ...doc, previewUrl, base64Data, mediaType: file.type, selectedAsContext: true };
+              setDocuments((prev) => [...prev, newDoc]);
+            } catch {
+              setError(`Couldn't read "${file.name}".`);
+              setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
+            }
+          } else {
+            // video/audio: preview only, no model support yet
+            setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
+          }
           continue;
         }
 
@@ -103,13 +129,12 @@ export function useDocumentUpload() {
         }
 
         // Everything else (pdf, docx, xlsx, unknown types, etc.): attach it.
-        // No in-browser text extraction for these yet, but that's fine —
-        // it just won't be added as text context.
         setDocuments((prev) => [...prev, doc]);
       }
     },
     [documents.length]
   );
+  
 
   const removeDocument = useCallback((id: string) => {
     setDocuments((prev) => {

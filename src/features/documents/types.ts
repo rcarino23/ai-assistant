@@ -29,4 +29,8 @@ export interface UploadedDocument {
   selectedAsContext: boolean;
   /** Local object URL for images/video/audio — used for the attachment chip, not sent anywhere. */
   previewUrl?: string;
+  /** Base64-encoded bytes (no data: prefix) — only populated for images, so the model can actually see them. */
+  base64Data?: string;
+  /** e.g. "image/png", "image/jpeg" — required alongside base64Data for the API. */
+  mediaType?: string;
 }

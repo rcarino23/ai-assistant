@@ -30,6 +30,7 @@ export function ChatWindow({
   onMessagesChange,
   knowledgeItems,
 }: ChatWindowProps) {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const {
     messages,
     isStreaming,
@@ -56,8 +57,14 @@ export function ChatWindow({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <MessageList messages={messages} onEdit={editMessage} onRetry={retryMessage} onRegenerate={regenerate} />
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
+        <MessageList
+          messages={messages}
+          scrollContainerRef={scrollContainerRef}
+          onEdit={editMessage}
+          onRetry={retryMessage}
+          onRegenerate={regenerate}
+        />
       </div>
 
       {error && (

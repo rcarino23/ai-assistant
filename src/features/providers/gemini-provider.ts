@@ -24,6 +24,11 @@ interface GeminiErrorBody {
   error?: { message?: string };
 }
 
+interface GeminiOutgoingPart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+}
+
 function parseGeminiError(status: number, text: string): string {
   try {
     const body = JSON.parse(text) as GeminiErrorBody;
@@ -65,12 +70,25 @@ export class GeminiProvider implements AIProvider {
     }
 
     const systemMessage = messages.find((m) => m.role === "system");
+    const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
     const contents = messages
-      .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
+    .filter((m) => m.role !== "system")
+    .map((m) => {
+        const role = m.role === "assistant" ? "model" : "user";
+        const images = (m.attachments ?? []).filter(
+        (a) => a.type === "image" && a.base64Data && a.mediaType && SUPPORTED_IMAGE_TYPES.has(a.mediaType)
+        );
+
+        const parts: GeminiOutgoingPart[] = [
+        ...images.map((img) => ({
+            inlineData: { mimeType: img.mediaType as string, data: img.base64Data as string },
+        })),
+        ...(m.content ? [{ text: m.content }] : []),
+        ];
+
+        return { role, parts };
+    });
 
     const model = settings.model || "gemini-2.5-flash";
     const url =

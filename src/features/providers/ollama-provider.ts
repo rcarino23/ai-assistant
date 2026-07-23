@@ -52,10 +52,18 @@ export class OllamaProvider implements AIProvider {
     }
 
     const endpoint = normalizeEndpoint(process.env.OLLAMA_ENDPOINT as string);
-    const apiMessages = messages.map((m) => ({
-      role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-      content: m.content,
-    }));
+    const apiMessages = messages.map((m) => {
+        const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
+        const images = (m.attachments ?? [])
+            .filter((a) => a.type === "image" && a.base64Data)
+            .map((a) => a.base64Data as string); // Ollama wants raw base64, no data: prefix — matches what we already store
+
+        return {
+            role,
+            content: m.content,
+            ...(images.length > 0 ? { images } : {}),
+        };
+    });
 
     let res: Response;
     try {

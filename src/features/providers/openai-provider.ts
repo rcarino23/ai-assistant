@@ -51,10 +51,29 @@ export class OpenAIProvider implements AIProvider {
       throw new ProviderNotConfiguredError(this.id);
     }
 
-    const apiMessages = messages.map((m) => ({
-      role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-      content: m.content,
-    }));
+    const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+    const apiMessages = messages.map((m) => {
+    const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
+    const images = (m.attachments ?? []).filter(
+        (a) => a.type === "image" && a.base64Data && a.mediaType && SUPPORTED_IMAGE_TYPES.has(a.mediaType)
+    );
+
+    if (images.length === 0) {
+        return { role, content: m.content };
+    }
+
+    return {
+        role,
+        content: [
+        ...(m.content ? [{ type: "text", text: m.content }] : []),
+        ...images.map((img) => ({
+            type: "image_url",
+            image_url: { url: `data:${img.mediaType};base64,${img.base64Data}` },
+        })),
+        ],
+    };
+    });
 
     let res: Response;
     try {
