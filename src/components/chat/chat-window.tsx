@@ -1,3 +1,4 @@
+// src/components/chat/chat-window.tsx
 "use client";
 
 import * as React from "react";
@@ -8,6 +9,7 @@ import { MessageInput } from "./message-input";
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 
 interface ChatWindowProps {
+  conversationId: string;
   providerId: string;
   providerConfigured: boolean;
   providerName: string;
@@ -18,16 +20,18 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({
+  conversationId,
   providerId,
   providerConfigured,
   providerName,
   settings,
   initialMessages,
   onMessagesChange,
-  knowledgeItems
+  knowledgeItems,
 }: ChatWindowProps) {
   const { messages, isStreaming, error, sendMessage, stop, regenerate, editMessage, retryMessage } = useChat({
     providerId,
+    conversationId,
     settings,
     initialMessages,
     onMessagesChange,
@@ -35,8 +39,8 @@ export function ChatWindow({
   });
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <MessageList messages={messages} onEdit={editMessage} onRetry={retryMessage} onRegenerate={regenerate} />
       </div>
 

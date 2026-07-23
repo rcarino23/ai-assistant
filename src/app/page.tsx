@@ -67,6 +67,8 @@ export default function Home() {
   const handleDelete = (id: string) => {
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
+    // Free the server-side knowledge cache for this conversation.
+    void fetch(`/api/knowledge/${id}`, { method: "DELETE" }).catch(() => {});
   };
 
   const handleTogglePin = (id: string) => {
@@ -109,19 +111,22 @@ export default function Home() {
               onToggleKnowledge={() => setKnowledgeOpen((v) => !v)}
               knowledgeOpen={knowledgeOpen}
             />
-            <ChatWindow
-              key={active.id}
-              providerId={active.providerId}
-              providerConfigured={activeProvider?.configured ?? false}
-              providerName={activeProvider?.name ?? active.providerId}
-              settings={{ ...DEFAULT_PROVIDER_SETTINGS, model: active.model }}
-              initialMessages={active.messages}
-              onMessagesChange={(messages: ChatMessage[]) => {
-                if (messages === active.messages) return;
-                updateActiveConversation({ messages, title: deriveTitle({ ...active, messages }) });
-              }}
-              knowledgeItems={enabledKnowledgeItems}
-            />
+            <div className="min-h-0 flex-1">
+              <ChatWindow
+                key={active.id}
+                conversationId={active.id}
+                providerId={active.providerId}
+                providerConfigured={activeProvider?.configured ?? false}
+                providerName={activeProvider?.name ?? active.providerId}
+                settings={{ ...DEFAULT_PROVIDER_SETTINGS, model: active.model }}
+                initialMessages={active.messages}
+                onMessagesChange={(messages: ChatMessage[]) => {
+                  if (messages === active.messages) return;
+                  updateActiveConversation({ messages, title: deriveTitle({ ...active, messages }) });
+                }}
+                knowledgeItems={enabledKnowledgeItems}
+              />
+            </div>
           </>
         ) : (
           <EmptyState onNew={handleNew} />

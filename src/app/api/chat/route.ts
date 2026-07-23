@@ -1,6 +1,9 @@
+// src/app/api/chat/route.ts
 import { NextRequest } from "next/server";
 import { getProvider } from "@/features/providers/registry";
+import { getKnowledgeItems, setKnowledgeItems } from "@/features/knowledge-bank/server-store";
 import type { ChatMessage, ProviderSettings } from "@/types";
+import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 
 export const runtime = "nodejs";
 
@@ -8,17 +11,43 @@ interface ChatRequestBody {
   providerId: string;
   messages: ChatMessage[];
   settings: ProviderSettings;
+  conversationId: string;
+  /**
+   * Only present when the client is (re)syncing the data bank — the first
+   * message of a conversation, or whenever items were added/removed/toggled
+   * since the last sync. Omitted on every other turn so the data bank
+   * content isn't re-sent on every request.
+   */
+  knowledgeItems?: KnowledgeItem[];
+}
+
+function withKnowledgeContext(messages: ChatMessage[], items: KnowledgeItem[]): ChatMessage[] {
+  if (items.length === 0) return messages;
+
+  const bankContext = items
+    .map((item) => `<knowledge name="${item.name}">\n${item.content}\n</knowledge>`)
+    .join("\n\n");
+
+  const hasSystem = messages.some((m) => m.role === "system");
+  if (hasSystem) {
+    return messages.map((m) =>
+      m.role === "system" ? { ...m, content: `${bankContext}\n\n${m.content}` } : m
+    );
+  }
+
+  return [
+    { id: "knowledge-bank-context", role: "system", content: bankContext, createdAt: Date.now() },
+    ...messages,
+  ];
 }
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as ChatRequestBody;
-  const { providerId, messages, settings } = body;
+  const { providerId, messages, settings, conversationId, knowledgeItems } = body;
 
   const provider = getProvider(providerId);
   if (!provider) {
-    return new Response(JSON.stringify({ error: `Unknown provider "${providerId}"` }), {
-      status: 400,
-    });
+    return new Response(JSON.stringify({ error: `Unknown provider "${providerId}"` }), { status: 400 });
   }
   if (!provider.isConfigured()) {
     return new Response(
@@ -27,6 +56,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Only touch the store when the client actually sent a fresh set of
+  // items; otherwise reuse whatever's already cached for this conversation.
+  if (knowledgeItems) {
+    setKnowledgeItems(conversationId, knowledgeItems);
+  }
+  const storedItems = getKnowledgeItems(conversationId);
+  const messagesWithContext = withKnowledgeContext(messages, storedItems);
+
   const encoder = new TextEncoder();
   const abortController = new AbortController();
   req.signal.addEventListener("abort", () => abortController.abort());
@@ -34,7 +71,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const event of provider.streamChat(messages, settings, abortController.signal)) {
+        for await (const event of provider.streamChat(messagesWithContext, settings, abortController.signal)) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
           if (event.type === "done" || event.type === "error") break;
         }

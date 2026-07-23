@@ -140,3 +140,34 @@ body {
 .chat-prose h3 {
   font-size: 1rem;
 }
+
+/* src/app/globals.css — replace the existing .chat-prose table block */
+
+.chat-table-wrapper {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-table-wrapper table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.chat-table-wrapper th,
+.chat-table-wrapper td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.chat-table-wrapper th {
+  background-color: var(--surface-raised);
+  font-weight: 600;
+}

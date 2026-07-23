@@ -1,15 +1,17 @@
+// src/features/chat/hooks/use-chat.ts
 "use client";
 
 import * as React from "react";
 import { useCallback, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 import { DEFAULT_PROVIDER_SETTINGS } from "@/types";
-import type { ChatMessage, ProviderSettings } from "@/types";
+import type { ChatMessage, MessageStatus, ProviderSettings } from "@/types";
 import type { UploadedDocument } from "@/features/documents/types";
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 
 interface UseChatOptions {
   providerId: string;
+  conversationId: string;
   settings?: ProviderSettings;
   initialMessages?: ChatMessage[];
   onMessagesChange?: (messages: ChatMessage[]) => void;
@@ -22,14 +24,12 @@ type StreamEvent =
   | { type: "error"; message: string };
 
 /**
- * The chat UI shows exactly what the user typed. Any text-extracted
- * attachments (csv/txt/md/json/xml) get folded into a *copy* of the
- * message content right before it's sent to the provider, so the model
- * still sees the file contents without them ever being displayed as raw
- * text in the conversation.
+ * Only handles per-message attachments now. Data-bank ("knowledge") context
+ * is merged server-side (see /api/chat) so it doesn't need to be folded
+ * into every message here.
  */
-function buildApiHistory(history: ChatMessage[], knowledgeItems: KnowledgeItem[] = []): ChatMessage[] {
-  const withAttachments = history.map((m) => {
+function withAttachmentContext(history: ChatMessage[]): ChatMessage[] {
+  return history.map((m) => {
     const contextBlocks = (m.attachments ?? [])
       .filter((d) => d.selectedAsContext && d.extractedText)
       .map((d) => `<document name="${d.name}">\n${d.extractedText}\n</document>`)
@@ -38,28 +38,11 @@ function buildApiHistory(history: ChatMessage[], knowledgeItems: KnowledgeItem[]
     if (!contextBlocks) return m;
     return { ...m, content: m.content ? `${contextBlocks}\n\n${m.content}` : contextBlocks };
   });
-
-  if (knowledgeItems.length === 0) return withAttachments;
-
-  const bankContext = knowledgeItems
-    .map((item) => `<knowledge name="${item.name}">\n${item.content}\n</knowledge>`)
-    .join("\n\n");
-
-  const hasSystem = withAttachments.some((m) => m.role === "system");
-  if (hasSystem) {
-    return withAttachments.map((m) =>
-      m.role === "system" ? { ...m, content: `${bankContext}\n\n${m.content}` } : m
-    );
-  }
-
-  return [
-    { id: "knowledge-bank-context", role: "system", content: bankContext, createdAt: Date.now() },
-    ...withAttachments,
-  ];
 }
 
 export function useChat({
   providerId,
+  conversationId,
   settings = DEFAULT_PROVIDER_SETTINGS,
   initialMessages = [],
   onMessagesChange,
@@ -70,10 +53,30 @@ export function useChat({
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  React.useEffect(() => {
-    onMessagesChange?.(messages);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
+  // Tracks the last knowledgeItems payload we actually sent to the server
+  // for this conversation, so we only re-send it when it's changed.
+  const lastSyncedKnowledgeRef = useRef<string | null>(null);
+
+  // Always call the *latest* onMessagesChange without needing it in
+  // runCompletion's dependency array.
+  const onMessagesChangeRef = useRef(onMessagesChange);
+  onMessagesChangeRef.current = onMessagesChange;
+
+  /**
+   * IMPORTANT: we intentionally do NOT sync to the parent via
+   * `useEffect(() => onMessagesChange(messages), [messages])`.
+   *
+   * During streaming, `messages` gets a new array reference on every SSE
+   * token. Wiring that through an effect means every token triggers the
+   * parent's setState (a localStorage write + a full app re-render), and
+   * under bursty streaming that cascade can exceed React's re-render guard
+   * ("Maximum update depth exceeded"). Instead we call this explicitly, and
+   * only at logical checkpoints — right after a user message is added, and
+   * once when a stream finishes — never once per token.
+   */
+  const notifyParent = useCallback((next: ChatMessage[]) => {
+    onMessagesChangeRef.current?.(next);
+  }, []);
 
   const runCompletion = useCallback(
     async (history: ChatMessage[]) => {
@@ -81,13 +84,14 @@ export function useChat({
       setIsStreaming(true);
 
       const assistantId = uuid();
+      const assistantCreatedAt = Date.now();
       setMessages((prev) => [
         ...prev,
         {
           id: assistantId,
           role: "assistant",
           content: "",
-          createdAt: Date.now(),
+          createdAt: assistantCreatedAt,
           status: "streaming",
           model: settings.model,
         },
@@ -96,17 +100,52 @@ export function useChat({
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const isFirstTurn = !history.some((m) => m.role === "assistant");
+      const knowledgeSignature = JSON.stringify(knowledgeItems.map((i) => [i.id, i.content, i.enabled]));
+      const shouldSyncKnowledge = isFirstTurn || lastSyncedKnowledgeRef.current !== knowledgeSignature;
+
+      // Accumulated deterministically alongside the streaming setMessages
+      // calls, so the final parent-sync payload below is built directly
+      // from known values instead of depending on when React commits state.
+      let assistantContent = "";
+      let finalStatus: MessageStatus = "streaming";
+
+      const finish = () => {
+        setIsStreaming(false);
+        abortRef.current = null;
+        if (finalStatus === "streaming") finalStatus = "done"; // stream closed with no explicit terminal event
+        const finalMessage: ChatMessage = {
+          id: assistantId,
+          role: "assistant",
+          content: assistantContent,
+          createdAt: assistantCreatedAt,
+          status: finalStatus,
+          model: settings.model,
+        };
+        notifyParent([...history, finalMessage]);
+      };
+
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ providerId, messages: buildApiHistory(history, knowledgeItems), settings }),
+          body: JSON.stringify({
+            providerId,
+            messages: withAttachmentContext(history),
+            settings,
+            conversationId,
+            ...(shouldSyncKnowledge ? { knowledgeItems } : {}),
+          }),
           signal: controller.signal,
         });
 
         if (!res.ok || !res.body) {
           const data = await res.json().catch(() => ({}) as { error?: string });
           throw new Error(data.error || `Request failed (${res.status})`);
+        }
+
+        if (shouldSyncKnowledge) {
+          lastSyncedKnowledgeRef.current = knowledgeSignature;
         }
 
         const reader = res.body.getReader();
@@ -130,37 +169,40 @@ export function useChat({
             const event = JSON.parse(json) as StreamEvent;
 
             if (event.type === "text") {
+              assistantContent += event.text;
               setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + event.text } : m))
+                prev.map((m) => (m.id === assistantId ? { ...m, content: assistantContent } : m))
               );
             } else if (event.type === "error") {
+              finalStatus = "error";
               setError(event.message);
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, status: "error" } : m))
-              );
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, status: "error" } : m)));
             } else if (event.type === "done") {
+              finalStatus = "done";
               setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, status: "done" } : m)));
             }
           }
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
+          finalStatus = "stopped";
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantId && m.status === "streaming" ? { ...m, status: "stopped" } : m))
           );
         } else {
           const message = err instanceof Error ? err.message : "Something went wrong";
+          finalStatus = "error";
           setError(message);
+          if (!assistantContent) assistantContent = message;
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantId ? { ...m, status: "error", content: m.content || message } : m))
           );
         }
       } finally {
-        setIsStreaming(false);
-        abortRef.current = null;
+        finish();
       }
     },
-    [providerId, settings, knowledgeItems]
+    [providerId, conversationId, settings, knowledgeItems, notifyParent]
   );
 
   const sendMessage = useCallback(
@@ -177,16 +219,16 @@ export function useChat({
       };
       const history = [...messages, userMessage];
       setMessages(history);
+      notifyParent(history);
       void runCompletion(history);
     },
-    [messages, isStreaming, runCompletion]
+    [messages, isStreaming, runCompletion, notifyParent]
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  /** Drop the last assistant reply and ask the model to try again. */
   const regenerate = useCallback(() => {
     if (isStreaming) return;
     const lastAssistantIdx = [...messages].reverse().findIndex((m) => m.role === "assistant");
@@ -194,10 +236,10 @@ export function useChat({
     const cutIdx = messages.length - 1 - lastAssistantIdx;
     const history = messages.slice(0, cutIdx);
     setMessages(history);
+    notifyParent(history);
     void runCompletion(history);
-  }, [isStreaming, messages, runCompletion]);
+  }, [isStreaming, messages, runCompletion, notifyParent]);
 
-  /** Edit a past user message and re-run the conversation from that point. */
   const editMessage = useCallback(
     (id: string, newContent: string) => {
       if (isStreaming) return;
@@ -205,12 +247,12 @@ export function useChat({
       if (idx === -1) return;
       const history = [...messages.slice(0, idx), { ...messages[idx], content: newContent }];
       setMessages(history);
+      notifyParent(history);
       void runCompletion(history);
     },
-    [isStreaming, messages, runCompletion]
+    [isStreaming, messages, runCompletion, notifyParent]
   );
 
-  /** Retry a failed/stopped message (assistant) or a user message's response. */
   const retryMessage = useCallback(
     (id: string) => {
       if (isStreaming) return;
@@ -219,22 +261,16 @@ export function useChat({
       const cutIdx = messages[idx].role === "assistant" ? idx : idx + 1;
       const history = messages.slice(0, cutIdx);
       setMessages(history);
+      notifyParent(history);
       void runCompletion(history);
     },
-    [isStreaming, messages, runCompletion]
+    [isStreaming, messages, runCompletion, notifyParent]
   );
 
-  const clear = useCallback(() => setMessages([]), []);
+  const clear = useCallback(() => {
+    setMessages([]);
+    notifyParent([]);
+  }, [notifyParent]);
 
-  return {
-    messages,
-    isStreaming,
-    error,
-    sendMessage,
-    stop,
-    regenerate,
-    editMessage,
-    retryMessage,
-    clear,
-  };
+  return { messages, isStreaming, error, sendMessage, stop, regenerate, editMessage, retryMessage, clear };
 }
