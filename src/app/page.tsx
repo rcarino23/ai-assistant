@@ -13,6 +13,8 @@ import { loadConversations, saveConversations, deriveTitle } from "@/features/ch
 import { KnowledgePanel } from "@/components/chat/knowledge-panel";
 import { useKnowledgeBank } from "@/features/knowledge-bank/use-knowledge-bank";
 import { IconButton } from "@/components/ui/icon-button";
+import { Toast } from "@/components/ui/toast";
+import { ErrorModal } from "@/components/chat/error-modal";
 
 function createConversation(providerId: string, model: string): Conversation {
   const now = Date.now();
@@ -36,6 +38,9 @@ export default function Home() {
   // (handled entirely with CSS breakpoints, see Sidebar/KnowledgePanel).
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = React.useState(true);
+  const [dbToast, setDbToast] = React.useState<string | null>(null);
+  const [dbSchemaError, setDbSchemaError] = React.useState<string | null>(null);
+
   const {
     items: knowledgeItems,
     enabledItems: enabledKnowledgeItems,
@@ -46,6 +51,7 @@ export default function Home() {
     error: knowledgeError,
     setError: setKnowledgeError,
     addDatabaseSnapshot,
+    dbPulling
   } = useKnowledgeBank();
 
   React.useEffect(() => {
@@ -93,6 +99,15 @@ export default function Home() {
       prev.map((c) => (c.id === id ? { ...c, title, titleManuallySet: true, updatedAt: Date.now() } : c))
     );
   };
+
+  const handlePullDbSchema = React.useCallback(async () => {
+    try {
+      await addDatabaseSnapshot();
+      setDbToast("Database schema pulled successfully.");
+    } catch (err) {
+      setDbSchemaError(err instanceof Error ? err.message : "Failed to pull database schema.");
+    }
+  }, [addDatabaseSnapshot]);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const activeProvider = providers.find((p) => p.id === active?.providerId);
@@ -184,7 +199,18 @@ export default function Home() {
           onToggle={toggleKnowledgeItem}
           onDismissError={() => setKnowledgeError(null)}
           onClose={() => setKnowledgeOpen(false)}
-          onAddDatabaseSnapshot={addDatabaseSnapshot}
+          onAddDatabaseSnapshot={handlePullDbSchema}
+          dbPulling={dbPulling}
+        />
+      )}
+
+      {dbToast && <Toast message={dbToast} onClose={() => setDbToast(null)} />}
+
+      {dbSchemaError && (
+        <ErrorModal
+          message={dbSchemaError}
+          onClose={() => setDbSchemaError(null)}
+          onRetry={handlePullDbSchema}
         />
       )}
     </div>

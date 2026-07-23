@@ -35,6 +35,7 @@ export function useKnowledgeBank() {
   const [items, setItems] = React.useState<KnowledgeItem[]>([]);
   const [hydrated, setHydrated] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [dbPulling, setDbPulling] = React.useState(false);
 
   React.useEffect(() => {
     setItems(loadKnowledgeItems());
@@ -105,28 +106,31 @@ export function useKnowledgeBank() {
   }, []);
 
   const addDatabaseSnapshot = React.useCallback(async () => {
-    setError(null);
-    const res = await fetch("/api/database/schema");
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Failed to pull database schema.");
-      return;
+    setDbPulling(true);
+    try {
+      const res = await fetch("/api/database/schema");
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to pull database schema.");
+      }
+      const item: KnowledgeItem = {
+        id: uuid(),
+        name: `MySQL schema (${new Date().toLocaleString()})`,
+        content: data.text,
+        sizeBytes: data.text.length,
+        addedAt: Date.now(),
+        enabled: true,
+        source: "database",
+      };
+      setItems((prev) => [item, ...prev.filter((p) => p.source !== "database")]); // replace old snapshot
+    } finally {
+      setDbPulling(false);
     }
-    const item: KnowledgeItem = {
-      id: uuid(),
-      name: `MySQL schema (${new Date().toLocaleString()})`,
-      content: data.text,
-      sizeBytes: data.text.length,
-      addedAt: Date.now(),
-      enabled: true,
-      source: "database",
-    };
-    setItems((prev) => [item, ...prev.filter((p) => p.source !== "database")]); // replace old snapshot
   }, []);
 
   const clear = React.useCallback(() => setItems([]), []);
 
   const enabledItems = React.useMemo(() => items.filter((i) => i.enabled), [items]);
 
-  return { items, enabledItems, hydrated, addFiles, addText, removeItem, toggleEnabled, clear, error, setError, addDatabaseSnapshot };
+  return { items, enabledItems, hydrated, addFiles, addText, removeItem, toggleEnabled, clear, error, setError, addDatabaseSnapshot, dbPulling };
 }

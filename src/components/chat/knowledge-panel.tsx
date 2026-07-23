@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Database, FileCode, FileText, Plus, Trash2, Upload, X } from "lucide-react";
+import { Database, FileCode, FileText, Loader2, Plus, Trash2, Upload, X } from "lucide-react";
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ interface KnowledgePanelProps {
   onDismissError: () => void;
   onClose?: () => void;
   onAddDatabaseSnapshot: () => void;
+  dbPulling: boolean;
 }
 
 export function KnowledgePanel({
@@ -45,7 +46,8 @@ export function KnowledgePanel({
   onToggle,
   onDismissError,
   onClose,
-  onAddDatabaseSnapshot
+  onAddDatabaseSnapshot,
+  dbPulling
 }: KnowledgePanelProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [addingNote, setAddingNote] = React.useState(false);
@@ -101,8 +103,18 @@ export function KnowledgePanel({
           </Button>
         </div>
         <div className="mt-2 flex gap-2">
-          <Button variant="outline" size="sm" onClick={onAddDatabaseSnapshot}>
-            <Database className="h-3.5 w-3.5" /> Pull DB schema
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onAddDatabaseSnapshot}
+            disabled={dbPulling}
+          >
+            {dbPulling ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Database className="h-3.5 w-3.5" />
+            )}
+            {dbPulling ? "Pulling schema…" : "Pull DB schema"}
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted">
