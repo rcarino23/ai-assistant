@@ -4,16 +4,21 @@ export type MessageRole = "user" | "assistant" | "system";
 
 export type MessageStatus = "pending" | "streaming" | "done" | "error" | "stopped";
 
+export interface ActivityStep {
+  id: string;
+  label: string;
+  status: "active" | "done";
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   createdAt: number;
   status?: MessageStatus;
-  /** Which provider/model produced this (assistant messages only) */
   model?: string;
-  /** Files attached when this message was sent (user messages only). */
   attachments?: UploadedDocument[];
+  activity?: ActivityStep[];
 }
 
 export interface Conversation {
@@ -26,6 +31,7 @@ export interface Conversation {
   archived?: boolean;
   providerId: string;
   model: string;
+  titleManuallySet?: boolean;
 }
 
 export interface ProviderSettings {
@@ -41,3 +47,9 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   maxTokens: 4096,
   topP: 1,
 };
+
+export type StreamEvent =
+  | { type: "text"; text: string }
+  | { type: "activity"; id: string; label: string; status: "active" | "done" }
+  | { type: "done" }
+  | { type: "error"; message: string };

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSchemaSnapshot, schemaSnapshotToText } from "@/features/database/mysql-client";
+import { getSchemaSnapshot, schemaSnapshotToText } from "@/features/database/registry";
 
 export const runtime = "nodejs";
 

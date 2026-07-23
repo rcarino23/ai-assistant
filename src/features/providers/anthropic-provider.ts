@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { AIProvider, ModelInfo, StreamEvent } from "./types";
 import { ProviderNotConfiguredError } from "./types";
-import { isDatabaseConfigured, runReadOnlyQuery } from "@/features/database/mysql-client";
+import { isDatabaseConfigured, runReadOnlyQuery } from "@/features/database/registry";
 
 const MODELS: ModelInfo[] = [
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", contextWindow: 200_000 },
@@ -13,8 +13,9 @@ const MODELS: ModelInfo[] = [
 const DATABASE_TOOL: Anthropic.Tool = {
   name: "query_database",
   description:
-    "Run a read-only SELECT query against the connected MySQL database and return the results. " +
-    "Only SELECT/SHOW/DESCRIBE/EXPLAIN statements are allowed. Always LIMIT results when exploring data.",
+    "Run a read-only SELECT query against the connected database (MySQL or SQL Server) and return the results. " +
+    "Only read-only statements are allowed — SELECT/SHOW/DESCRIBE/EXPLAIN on MySQL, or SELECT/WITH on SQL Server. " +
+    "Always cap results when exploring data (LIMIT on MySQL, TOP on SQL Server).",
   input_schema: {
     type: "object",
     properties: {
@@ -58,11 +59,14 @@ export class AnthropicProvider implements AIProvider {
     const client = this.client();
     const tools = isDatabaseConfigured() ? [DATABASE_TOOL] : undefined;
 
+    let thinkingResolved = false;
+
     try {
-      // Loop: stream a turn; if Claude asks to use the tool, run it and
-      // continue the same conversation with the tool result appended.
-      // Cap iterations so a misbehaving loop can't run forever.
       for (let turn = 0; turn < 5; turn++) {
+        if (turn === 0) {
+          yield { type: "activity", id: "thinking", label: "Thinking…", status: "active" };
+        }
+
         const stream = client.messages.stream(
           {
             model: settings.model || "claude-sonnet-4-6",
@@ -78,6 +82,10 @@ export class AnthropicProvider implements AIProvider {
 
         for await (const event of stream) {
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            if (!thinkingResolved) {
+              thinkingResolved = true;
+              yield { type: "activity", id: "thinking", label: "Thinking…", status: "done" };
+            }
             yield { type: "text", text: event.delta.text };
           }
         }
@@ -85,24 +93,39 @@ export class AnthropicProvider implements AIProvider {
         const finalMessage = await stream.finalMessage();
 
         if (finalMessage.stop_reason !== "tool_use") {
+          if (!thinkingResolved) {
+            thinkingResolved = true;
+            yield { type: "activity", id: "thinking", label: "Thinking…", status: "done" };
+          }
           yield { type: "done" };
           return;
         }
 
-        // Execute any tool_use blocks, feed results back, then loop again.
+        // Model wants to call the database tool — surface that as its own step.
+        if (!thinkingResolved) {
+          thinkingResolved = true;
+          yield { type: "activity", id: "thinking", label: "Thinking…", status: "done" };
+        }
+
         conversation = [...conversation, { role: "assistant", content: finalMessage.content }];
 
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
         for (const block of finalMessage.content) {
           if (block.type !== "tool_use" || block.name !== "query_database") continue;
-          const sql = (block.input as { sql?: string }).sql ?? "";
+          const sqlInput = (block.input as { sql?: string }).sql ?? "";
+          const shortSql = sqlInput.length > 80 ? `${sqlInput.slice(0, 80)}…` : sqlInput;
+          const activityId = `tool-${block.id}`;
+
+          yield { type: "activity", id: activityId, label: `Querying database: ${shortSql}`, status: "active" };
+
           try {
-            const result = await runReadOnlyQuery(sql);
+            const result = await runReadOnlyQuery(sqlInput);
             toolResults.push({
               type: "tool_result",
               tool_use_id: block.id,
               content: JSON.stringify(result),
             });
+            yield { type: "activity", id: activityId, label: `Queried database: ${shortSql}`, status: "done" };
           } catch (err) {
             const message = err instanceof Error ? err.message : "Query failed";
             toolResults.push({
@@ -111,10 +134,12 @@ export class AnthropicProvider implements AIProvider {
               content: `Error: ${message}`,
               is_error: true,
             });
+            yield { type: "activity", id: activityId, label: `Database query failed: ${message}`, status: "done" };
           }
         }
 
         conversation = [...conversation, { role: "user", content: toolResults }];
+        thinkingResolved = false; // next turn gets its own "Thinking…" step
       }
 
       yield { type: "error", message: "Tool loop limit reached without a final answer." };

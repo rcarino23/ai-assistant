@@ -20,6 +20,7 @@ interface UseChatOptions {
 
 type StreamEvent =
   | { type: "text"; text: string }
+  | { type: "activity"; id: string; label: string; status: "active" | "done" }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -94,6 +95,7 @@ export function useChat({
           createdAt: assistantCreatedAt,
           status: "streaming",
           model: settings.model,
+          activity: [{ id: "thinking", label: "Thinking…", status: "active" }],
         },
       ]);
 
@@ -107,7 +109,7 @@ export function useChat({
       // Accumulated deterministically alongside the streaming setMessages
       // calls, so the final parent-sync payload below is built directly
       // from known values instead of depending on when React commits state.
-      let assistantContent = "";
+      const assistantContent = "";
       let finalStatus: MessageStatus = "streaming";
 
       const finish = () => {
@@ -169,14 +171,38 @@ export function useChat({
             const event = JSON.parse(json) as StreamEvent;
 
             if (event.type === "text") {
-              assistantContent += event.text;
               setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: assistantContent } : m))
+                prev.map((m) => {
+                  if (m.id !== assistantId) return m;
+                  const activity = (m.activity ?? []).map((a) =>
+                    a.id === "thinking" && a.status === "active" ? { ...a, status: "done" as const } : a
+                  );
+                  return { ...m, content: m.content + event.text, activity };
+                })
+              );
+            } else if (event.type === "activity") {
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantId) return m;
+                  const existing = m.activity ?? [];
+                  const idx = existing.findIndex((a) => a.id === event.id);
+                  const step = { id: event.id, label: event.label, status: event.status };
+                  const activity =
+                    idx === -1 ? [...existing, step] : existing.map((a, i) => (i === idx ? step : a));
+                  return { ...m, activity };
+                })
               );
             } else if (event.type === "error") {
-              finalStatus = "error";
               setError(event.message);
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, status: "error" } : m)));
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantId) return m;
+                  const activity = (m.activity ?? []).map((a) =>
+                    a.status === "active" ? { ...a, status: "done" as const } : a
+                  );
+                  return { ...m, status: "error", activity };
+                })
+              );
             } else if (event.type === "done") {
               finalStatus = "done";
               setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, status: "done" } : m)));
@@ -185,17 +211,26 @@ export function useChat({
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
-          finalStatus = "stopped";
           setMessages((prev) =>
-            prev.map((m) => (m.id === assistantId && m.status === "streaming" ? { ...m, status: "stopped" } : m))
+            prev.map((m) => {
+              if (m.id !== assistantId || m.status !== "streaming") return m;
+              const activity = (m.activity ?? []).map((a) =>
+                a.status === "active" ? { ...a, status: "done" as const } : a
+              );
+              return { ...m, status: "stopped", activity };
+            })
           );
         } else {
           const message = err instanceof Error ? err.message : "Something went wrong";
-          finalStatus = "error";
           setError(message);
-          if (!assistantContent) assistantContent = message;
           setMessages((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, status: "error", content: m.content || message } : m))
+            prev.map((m) => {
+              if (m.id !== assistantId) return m;
+              const activity = (m.activity ?? []).map((a) =>
+                a.status === "active" ? { ...a, status: "done" as const } : a
+              );
+              return { ...m, status: "error", content: m.content || message, activity };
+            })
           );
         }
       } finally {

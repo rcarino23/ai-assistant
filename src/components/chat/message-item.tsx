@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Pencil, RotateCcw, Sparkles, User, X } from "lucide-react";
+import { Check, Copy, Loader2, Pencil, RotateCcw, Sparkles, User, X } from "lucide-react";
 import type { ChatMessage } from "@/types";
 import { cn, formatTime } from "@/lib/utils";
 import { Markdown } from "./markdown";
@@ -76,6 +76,20 @@ export function MessageItem({ message, isLastAssistant, onEdit, onRetry, onRegen
               isUser ? "bg-accent text-accent-ink" : "bg-surface border border-border"
             )}
           >
+            {!isUser && message.activity && message.activity.length > 0 && (
+              <div className="mb-1.5 space-y-1">
+                {message.activity.map((step) => (
+                  <div key={step.id} className="flex items-center gap-1.5 text-xs text-muted">
+                    {step.status === "active" ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                    ) : (
+                      <Check className="h-3 w-3 shrink-0" />
+                    )}
+                    <span className={cn(step.status === "active" && "animate-pulse")}>{step.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {isUser ? (
               <>
                 {message.attachments && message.attachments.length > 0 && (

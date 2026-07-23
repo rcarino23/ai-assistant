@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runReadOnlyQuery } from "@/features/database/mysql-client";
+import { runReadOnlyQuery } from "@/features/database/registry";
 
 export const runtime = "nodejs";
 

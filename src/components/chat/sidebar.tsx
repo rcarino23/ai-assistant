@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Pin, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { Check, Pencil, Pin, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import type { Conversation } from "@/types";
 import { cn, truncate } from "@/lib/utils";
 import { IconButton } from "@/components/ui/icon-button";
@@ -13,10 +13,36 @@ interface SidebarProps {
   onNew: () => void;
   onDelete: (id: string) => void;
   onTogglePin: (id: string) => void;
+  onRename: (id: string, title: string) => void;
 }
 
-export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onTogglePin }: SidebarProps) {
+export function Sidebar({
+  conversations,
+  activeId,
+  onSelect,
+  onNew,
+  onDelete,
+  onTogglePin,
+  onRename,
+}: SidebarProps) {
   const [query, setQuery] = React.useState("");
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState("");
+
+  const startEdit = (c: Conversation) => {
+    setEditingId(c.id);
+    setDraft(c.title || "New chat");
+  };
+
+  const commitEdit = () => {
+    if (editingId) {
+      const trimmed = draft.trim();
+      if (trimmed) onRename(editingId, trimmed);
+    }
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => setEditingId(null);
 
   const filtered = conversations.filter((c) =>
     c.title.toLowerCase().includes(query.toLowerCase())
@@ -58,18 +84,30 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
             label="Pinned"
             items={pinned}
             activeId={activeId}
+            editingId={editingId}
+            draft={draft}
             onSelect={onSelect}
             onDelete={onDelete}
             onTogglePin={onTogglePin}
+            onStartEdit={startEdit}
+            onDraftChange={setDraft}
+            onCommitEdit={commitEdit}
+            onCancelEdit={cancelEdit}
           />
         )}
         <ConversationGroup
           label="Recent"
           items={recent}
           activeId={activeId}
+          editingId={editingId}
+          draft={draft}
           onSelect={onSelect}
           onDelete={onDelete}
           onTogglePin={onTogglePin}
+          onStartEdit={startEdit}
+          onDraftChange={setDraft}
+          onCommitEdit={commitEdit}
+          onCancelEdit={cancelEdit}
         />
         {filtered.length === 0 && (
           <p className="mt-6 text-center text-xs text-muted">No chats found.</p>
@@ -83,55 +121,120 @@ function ConversationGroup({
   label,
   items,
   activeId,
+  editingId,
+  draft,
   onSelect,
   onDelete,
   onTogglePin,
+  onStartEdit,
+  onDraftChange,
+  onCommitEdit,
+  onCancelEdit,
 }: {
   label: string;
   items: Conversation[];
   activeId: string | null;
+  editingId: string | null;
+  draft: string;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onTogglePin: (id: string) => void;
+  onStartEdit: (c: Conversation) => void;
+  onDraftChange: (value: string) => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
 }) {
   if (items.length === 0) return null;
   return (
     <div className="mb-4">
       <p className="mb-1 px-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted">{label}</p>
       <ul className="space-y-0.5">
-        {items.map((c) => (
-          <li key={c.id}>
-            <div
-              className={cn(
-                "group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm cursor-pointer",
-                c.id === activeId ? "bg-surface-raised text-ink" : "text-muted hover:bg-surface-raised hover:text-ink"
+        {items.map((c) => {
+          const isEditing = editingId === c.id;
+          return (
+            <li key={c.id}>
+              {isEditing ? (
+                <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
+                  <input
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => onDraftChange(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        onCommitEdit();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        onCancelEdit();
+                      }
+                    }}
+                    onBlur={onCommitEdit}
+                    className="flex-1 rounded-md border border-accent bg-surface px-1.5 py-0.5 text-sm text-ink focus:outline-none"
+                  />
+                  <IconButton
+                    label="Save name"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={onCommitEdit}
+                  >
+                    <Check className="h-3 w-3" />
+                  </IconButton>
+                  <IconButton
+                    label="Cancel rename"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={onCancelEdit}
+                  >
+                    <X className="h-3 w-3" />
+                  </IconButton>
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    "group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm cursor-pointer",
+                    c.id === activeId ? "bg-surface-raised text-ink" : "text-muted hover:bg-surface-raised hover:text-ink"
+                  )}
+                  onClick={() => onSelect(c.id)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    onStartEdit(c);
+                  }}
+                >
+                  <span className="flex-1 truncate">{truncate(c.title || "New chat", 28)}</span>
+                  <IconButton
+                    label="Rename chat"
+                    className="opacity-0 group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStartEdit(c);
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </IconButton>
+                  <IconButton
+                    label={c.pinned ? "Unpin chat" : "Pin chat"}
+                    className="opacity-0 group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePin(c.id);
+                    }}
+                  >
+                    <Pin className={cn("h-3 w-3", c.pinned && "fill-current")} />
+                  </IconButton>
+                  <IconButton
+                    label="Delete chat"
+                    className="opacity-0 group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(c.id);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </IconButton>
+                </div>
               )}
-              onClick={() => onSelect(c.id)}
-            >
-              <span className="flex-1 truncate">{truncate(c.title || "New chat", 28)}</span>
-              <IconButton
-                label={c.pinned ? "Unpin chat" : "Pin chat"}
-                className="opacity-0 group-hover:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTogglePin(c.id);
-                }}
-              >
-                <Pin className={cn("h-3 w-3", c.pinned && "fill-current")} />
-              </IconButton>
-              <IconButton
-                label="Delete chat"
-                className="opacity-0 group-hover:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(c.id);
-                }}
-              >
-                <Trash2 className="h-3 w-3" />
-              </IconButton>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

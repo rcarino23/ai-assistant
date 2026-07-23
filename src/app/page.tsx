@@ -80,6 +80,12 @@ export default function Home() {
     setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...patch, updatedAt: Date.now() } : c)));
   };
 
+  const handleRename = (id: string, title: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title, titleManuallySet: true, updatedAt: Date.now() } : c))
+    );
+  };
+
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const activeProvider = providers.find((p) => p.id === active?.providerId);
 
@@ -94,6 +100,7 @@ export default function Home() {
         onNew={handleNew}
         onDelete={handleDelete}
         onTogglePin={handleTogglePin}
+        onRename={handleRename}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -121,8 +128,10 @@ export default function Home() {
                 settings={{ ...DEFAULT_PROVIDER_SETTINGS, model: active.model }}
                 initialMessages={active.messages}
                 onMessagesChange={(messages: ChatMessage[]) => {
-                  if (messages === active.messages) return;
-                  updateActiveConversation({ messages, title: deriveTitle({ ...active, messages }) });
+                  updateActiveConversation({
+                    messages,
+                    title: active.titleManuallySet ? active.title : deriveTitle({ ...active, messages }),
+                  });
                 }}
                 knowledgeItems={enabledKnowledgeItems}
               />

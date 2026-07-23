@@ -3,6 +3,7 @@ import type { ChatMessage, ProviderSettings } from "@/types";
 /** A single chunk emitted while streaming a completion. */
 export type StreamEvent =
   | { type: "text"; text: string }
+  | { type: "activity"; id: string; label: string; status: "active" | "done" }
   | { type: "done" }
   | { type: "error"; message: string };
 
