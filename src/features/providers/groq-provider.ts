@@ -2,6 +2,7 @@
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { AIProvider, ModelInfo, StreamEvent } from "./types";
 import { ProviderNotConfiguredError } from "./types";
+import { withAttachmentText } from "./message-content";
 
 const MODELS: ModelInfo[] = [
   { id: "openai/gpt-oss-120b", label: "OpenAI GPT-OSS 120B", contextWindow: 128_000 },
@@ -55,7 +56,7 @@ export class GroqProvider implements AIProvider {
 
     const apiMessages = messages.map((m) => ({
       role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-      content: m.content,
+      content: withAttachmentText(m),
     }));
 
     let res: Response;

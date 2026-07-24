@@ -122,8 +122,9 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
         )}
       </div>
       <p className="mt-2 text-center text-xs text-muted">
-        Press Enter to send, Shift + Enter for a new line. Text files (.txt, .md, .csv, .json, .xml) are read
-        as context; images, video, and other files are attached but not read as text yet.
+        Press Enter to send, Shift + Enter for a new line. Text, PDF, Word, and Excel files (.txt, .md, .csv,
+        .json, .xml, .pdf, .docx, .xlsx) are read as context; images are sent directly to the model; video and
+        audio are attached but not read yet.
       </p>
     </div>
   );

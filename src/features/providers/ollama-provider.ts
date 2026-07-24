@@ -1,7 +1,7 @@
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { AIProvider, ModelInfo, StreamEvent } from "./types";
 import { ProviderNotConfiguredError } from "./types";
-
+import { withAttachmentText } from "./message-content";
 /**
  * Static seed list — Ollama doesn't have a fixed catalog like hosted
  * providers; whatever the user has pulled locally (`ollama pull llama3.2`,
@@ -59,9 +59,9 @@ export class OllamaProvider implements AIProvider {
             .map((a) => a.base64Data as string); // Ollama wants raw base64, no data: prefix — matches what we already store
 
         return {
-            role,
-            content: m.content,
-            ...(images.length > 0 ? { images } : {}),
+          role,
+          content: withAttachmentText(m),
+          ...(images.length > 0 ? { images } : {}),
         };
     });
 

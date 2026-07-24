@@ -15,6 +15,8 @@ type AnthropicMessageContentBlock = {
   [key: string]: unknown;
 };
 
+const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
 const DATABASE_TOOL: Anthropic.Tool = {
   name: "query_database",
   description:
@@ -53,19 +55,57 @@ export class AnthropicProvider implements AIProvider {
       throw new ProviderNotConfiguredError(this.id);
     }
 
+    function textBlockWithCache(text: string): AnthropicMessageContentBlock {
+      return { type: "text", text, cache_control: { type: "ephemeral" } };
+    }
+
+    /**
+     * Marks a cache breakpoint at the second-to-last message in the
+     * conversation. Anthropic caches everything up through that breakpoint, so
+     * as the conversation grows turn over turn, only the newest message (plus
+     * whatever's after the breakpoint) is billed at full price — the rest is
+     * served from cache (~90% cheaper) as long as it's requested again within
+     * the cache TTL. Applied fresh on every call rather than mutated in place,
+     * so breakpoints don't accumulate across the tool-use loop below.
+    */
+    function withCacheControl(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+      if (messages.length < 2) return messages;
+      const breakpointIndex = messages.length - 2;
+      return messages.map((m, i) => {
+        if (i !== breakpointIndex) return m;
+        const content = m.content;
+        if (typeof content === "string") {
+          return { ...m, content: [textBlockWithCache(content)] } as unknown as Anthropic.MessageParam;
+        }
+        if (Array.isArray(content) && content.length > 0) {
+          const blocks = [...content] as unknown as AnthropicMessageContentBlock[];
+          const lastIdx = blocks.length - 1;
+          blocks[lastIdx] = { ...blocks[lastIdx], cache_control: { type: "ephemeral" } };
+          return { ...m, content: blocks } as unknown as Anthropic.MessageParam;
+        }
+        return m;
+      });
+    }
+
     function buildMessageContent(m: ChatMessage): string | AnthropicMessageContentBlock[] {
       const textDocs = (m.attachments ?? []).filter((a) => a.selectedAsContext && a.extractedText);
-      if (textDocs.length === 0) return m.content;
+      const images = (m.attachments ?? []).filter(
+        (a) => a.selectedAsContext && a.type === "image" && a.base64Data && a.mediaType && SUPPORTED_IMAGE_TYPES.has(a.mediaType)
+      );
 
-      const blocks: AnthropicMessageContentBlock[] = textDocs.map((doc) => ({
-        type: "document",
-        title: doc.name,
-        source: {
-          type: "text",
-          media_type: "text/plain",
-          data: doc.extractedText,
-        },
-      }));
+      if (textDocs.length === 0 && images.length === 0) return m.content;
+
+      const blocks: AnthropicMessageContentBlock[] = [
+        ...textDocs.map((doc) => ({
+          type: "document",
+          title: doc.name,
+          source: { type: "text", media_type: "text/plain", data: doc.extractedText },
+        })),
+        ...images.map((img) => ({
+          type: "image",
+          source: { type: "base64", media_type: img.mediaType, data: img.base64Data },
+        })),
+      ];
 
       if (m.content) blocks.push({ type: "text", text: m.content });
       return blocks;
@@ -96,8 +136,10 @@ export class AnthropicProvider implements AIProvider {
             max_tokens: settings.maxTokens ?? 4096,
             temperature: settings.temperature ?? 0.7,
             top_p: settings.topP ?? 1,
-            system: systemMessage?.content,
-            messages: conversation as Anthropic.MessageParam[],
+            system: systemMessage
+              ? ([textBlockWithCache(systemMessage.content)] as unknown as Anthropic.MessageCreateParams["system"])
+              : undefined,
+            messages: withCacheControl(conversation as Anthropic.MessageParam[]),
             tools,
           },
           { signal }

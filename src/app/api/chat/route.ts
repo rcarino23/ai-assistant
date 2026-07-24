@@ -4,6 +4,7 @@ import { getProvider } from "@/features/providers/registry";
 import { getKnowledgeItems, setKnowledgeItems } from "@/features/knowledge-bank/server-store";
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
+import { condenseHistoryForProvider } from "@/features/chat/history-condenser";
 
 export const runtime = "nodejs";
 
@@ -62,7 +63,12 @@ export async function POST(req: NextRequest) {
     setKnowledgeItems(conversationId, knowledgeItems);
   }
   const storedItems = getKnowledgeItems(conversationId);
-  const messagesWithContext = withKnowledgeContext(messages, storedItems);
+  const withKnowledge = withKnowledgeContext(messages, storedItems);
+
+  const messagesWithContext =
+    providerId === "anthropic"
+      ? withKnowledge
+      : await condenseHistoryForProvider(withKnowledge, conversationId, provider);
 
   const encoder = new TextEncoder();
   const abortController = new AbortController();

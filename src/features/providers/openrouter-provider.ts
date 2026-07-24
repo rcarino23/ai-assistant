@@ -3,6 +3,7 @@ import type { ChatMessage, ProviderSettings } from "@/types";
 import type { AIProvider, ModelInfo, StreamEvent } from "./types";
 import { ProviderNotConfiguredError } from "./types";
 import { getFreeModels, getCachedFreeModels } from "./openrouter-models";
+import { withAttachmentText, imageAttachments } from "./message-content";
 
 const DEFAULT_MODEL = "openrouter/auto";
 const MAX_MODEL_ATTEMPTS = 3; // how many free models to try before giving up
@@ -78,22 +79,21 @@ export class OpenRouterProvider implements AIProvider {
       throw new ProviderNotConfiguredError(this.id);
     }
 
-    const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+    // const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
     const apiMessages = messages.map((m) => {
       const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
-      const images = (m.attachments ?? []).filter(
-        (a) => a.type === "image" && a.base64Data && a.mediaType && SUPPORTED_IMAGE_TYPES.has(a.mediaType)
-      );
+      const images = imageAttachments(m);
+      const textContent = withAttachmentText(m);
 
       if (images.length === 0) {
-        return { role, content: m.content };
+        return { role, content: textContent };
       }
 
       return {
         role,
         content: [
-          ...(m.content ? [{ type: "text", text: m.content }] : []),
+          ...(textContent ? [{ type: "text", text: textContent }] : []),
           ...images.map((img) => ({
             type: "image_url",
             image_url: { url: `data:${img.mediaType};base64,${img.base64Data}` },
@@ -140,6 +140,15 @@ export class OpenRouterProvider implements AIProvider {
           }),
           signal,
         });
+
+        console.log({
+          model,
+          messages: apiMessages,
+          temperature: settings.temperature ?? 0.7,
+          top_p: settings.topP ?? 1,
+          max_tokens: settings.maxTokens ?? 4096,
+          stream: true,
+        })
       } catch (err) {
         if (signal.aborted) return;
         const message = err instanceof Error ? err.message : "Network error contacting OpenRouter";

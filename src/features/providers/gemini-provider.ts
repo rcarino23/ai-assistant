@@ -1,6 +1,7 @@
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { AIProvider, ModelInfo, StreamEvent } from "./types";
 import { ProviderNotConfiguredError } from "./types";
+import { withAttachmentText, imageAttachments } from "./message-content";
 
 const MODELS: ModelInfo[] = [
   { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", contextWindow: 1_048_576 },
@@ -70,21 +71,20 @@ export class GeminiProvider implements AIProvider {
     }
 
     const systemMessage = messages.find((m) => m.role === "system");
-    const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+    // const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
     const contents = messages
     .filter((m) => m.role !== "system")
     .map((m) => {
         const role = m.role === "assistant" ? "model" : "user";
-        const images = (m.attachments ?? []).filter(
-        (a) => a.type === "image" && a.base64Data && a.mediaType && SUPPORTED_IMAGE_TYPES.has(a.mediaType)
-        );
+        const images = imageAttachments(m);
+        const textContent = withAttachmentText(m);
 
         const parts: GeminiOutgoingPart[] = [
-        ...images.map((img) => ({
+          ...images.map((img) => ({
             inlineData: { mimeType: img.mediaType as string, data: img.base64Data as string },
-        })),
-        ...(m.content ? [{ text: m.content }] : []),
+          })),
+          ...(textContent ? [{ text: textContent }] : []),
         ];
 
         return { role, parts };

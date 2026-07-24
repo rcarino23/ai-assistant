@@ -4,13 +4,15 @@ import * as React from "react";
 import { v4 as uuid } from "uuid";
 import type { KnowledgeItem } from "./types";
 import { loadKnowledgeItems, saveKnowledgeItems } from "./persistence";
+import { extractDocumentText, isRichDocumentFile } from "@/features/documents/extract-text";
 
 const MAX_ITEMS = 20;
 const MAX_ITEM_SIZE = 2 * 1024 * 1024; // 2MB — this gets inlined into every prompt
 const SCHEMA_ITEM_PREFIX = "DB schema";
+const MAX_RICH_SOURCE_SIZE = 20 * 1024 * 1024;
 
 const BINARY_EXTENSIONS = new Set([
-  "pdf", "docx", "xlsx", "png", "jpg", "jpeg", "gif", "webp",
+  "png", "jpg", "jpeg", "gif", "webp",
   "mp4", "mov", "mp3", "wav", "zip",
 ]);
 
@@ -63,20 +65,32 @@ export function useKnowledgeBank() {
 
       for (const file of list) {
         if (isLikelyBinary(file)) {
-          setError(`"${file.name}" isn't readable as text/code yet, so it was skipped.`);
+          setError(
+            `"${file.name}" isn't readable as text, so it was skipped. Images, video, and audio can't be added to the data bank — attach them directly in the chat instead.`
+          );
           continue;
         }
-        if (file.size > MAX_ITEM_SIZE) {
-          setError(`"${file.name}" is larger than ${Math.round(MAX_ITEM_SIZE / (1024 * 1024))}MB and was skipped.`);
+
+        const isRich = isRichDocumentFile(file);
+        const sourceLimit = isRich ? MAX_RICH_SOURCE_SIZE : MAX_ITEM_SIZE;
+        if (file.size > sourceLimit) {
+          setError(`"${file.name}" is larger than ${Math.round(sourceLimit / (1024 * 1024))}MB and was skipped.`);
           continue;
         }
+
         try {
-          const content = await readFileAsText(file);
+          const content = isRich ? await extractDocumentText(file) : await readFileAsText(file);
+          if (content.length > MAX_ITEM_SIZE) {
+            setError(
+              `"${file.name}" produced more text than fits in the data bank (${Math.round(MAX_ITEM_SIZE / (1024 * 1024))}MB) and was skipped.`
+            );
+            continue;
+          }
           const item: KnowledgeItem = {
             id: uuid(),
             name: file.name,
             content,
-            sizeBytes: file.size,
+            sizeBytes: content.length,
             addedAt: Date.now(),
             enabled: true,
           };

@@ -1,6 +1,7 @@
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { AIProvider, ModelInfo, StreamEvent } from "./types";
 import { ProviderNotConfiguredError } from "./types";
+import { withAttachmentText, imageAttachments } from "./message-content";
 
 const MODELS: ModelInfo[] = [
   { id: "gpt-4.1", label: "GPT-4.1", contextWindow: 1_047_576 },
@@ -54,25 +55,24 @@ export class OpenAIProvider implements AIProvider {
     const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
     const apiMessages = messages.map((m) => {
-    const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
-    const images = (m.attachments ?? []).filter(
-        (a) => a.type === "image" && a.base64Data && a.mediaType && SUPPORTED_IMAGE_TYPES.has(a.mediaType)
-    );
+      const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
+      const images = imageAttachments(m);
+      const textContent = withAttachmentText(m);
 
-    if (images.length === 0) {
-        return { role, content: m.content };
-    }
+      if (images.length === 0) {
+        return { role, content: textContent };
+      }
 
-    return {
+      return {
         role,
         content: [
-        ...(m.content ? [{ type: "text", text: m.content }] : []),
-        ...images.map((img) => ({
+          ...(textContent ? [{ type: "text", text: textContent }] : []),
+          ...images.map((img) => ({
             type: "image_url",
             image_url: { url: `data:${img.mediaType};base64,${img.base64Data}` },
-        })),
+          })),
         ],
-    };
+      };
     });
 
     let res: Response;

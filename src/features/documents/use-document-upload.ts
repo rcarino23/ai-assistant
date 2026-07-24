@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 import type { UploadedDocument, DocumentType } from "./types";
-import { isExtractableFile, isPreviewableMedia, readFileAsText } from "./extract-text";
+import { isExtractableFile, isPreviewableMedia, isRichDocumentFile, extractDocumentText, readFileAsText } from "./extract-text";
 
 const MAX_FILES = 5;
 const MAX_TEXT_FILE_SIZE = 5 * 1024 * 1024;        // 5MB — read fully into the prompt as text
 const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024;      // 15MB — local preview only
 const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024;     // 100MB — local preview only
 const MAX_ATTACH_ONLY_FILE_SIZE = 25 * 1024 * 1024; // 25MB — attached but not parsed (pdf, docx, xlsx, other)
+const MAX_RICH_DOC_FILE_SIZE = 20 * 1024 * 1024
 
 function inferType(file: File): DocumentType {
   const ext = file.name.split(".").pop()?.toLowerCase();
@@ -44,6 +45,7 @@ function readFileAsBase64(file: File): Promise<string> {
 function maxSizeFor(file: File): number {
   if (file.type.startsWith("video/")) return MAX_VIDEO_FILE_SIZE;
   if (file.type.startsWith("image/") || file.type.startsWith("audio/")) return MAX_IMAGE_FILE_SIZE;
+  if (isRichDocumentFile(file)) return MAX_RICH_DOC_FILE_SIZE;
   if (isExtractableFile(file)) return MAX_TEXT_FILE_SIZE;
   return MAX_ATTACH_ONLY_FILE_SIZE;
 }
@@ -123,6 +125,18 @@ export function useDocumentUpload() {
           } else {
             // video/audio: preview only, no model support yet
             setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
+          }
+          continue;
+        }
+
+        // PDF / DOCX / XLSX: parse and read into the prompt as context, same as plain text files.
+        if (isRichDocumentFile(file)) {
+          try {
+            const text = truncateExtractedText(await extractDocumentText(file), file.name);
+            setDocuments((prev) => [...prev, { ...doc, extractedText: text }]);
+          } catch {
+            setError(`Couldn't read "${file.name}" — it was attached but its contents won't be sent to the model.`);
+            setDocuments((prev) => [...prev, doc]);
           }
           continue;
         }
