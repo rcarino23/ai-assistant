@@ -11,6 +11,7 @@ export type DocumentType =
   | "txt"
   | "md"
   | "csv"
+  | "xls"
   | "xlsx"
   | "json"
   | "xml"

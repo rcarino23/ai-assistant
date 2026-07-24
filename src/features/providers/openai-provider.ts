@@ -74,6 +74,7 @@ export class OpenAIProvider implements AIProvider {
         ],
       };
     });
+    console.log("🚀 ~ OpenAIProvider ~ streamChat ~ apiMessages:", apiMessages)
 
     let res: Response;
     try {

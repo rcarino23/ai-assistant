@@ -137,7 +137,7 @@ export function useChat({
             messages: normalizedHistory,
             settings,
             conversationId,
-            ...(shouldSyncKnowledge ? { knowledgeItems } : {}),
+            knowledgeItems,
           }),
           signal: controller.signal,
         });

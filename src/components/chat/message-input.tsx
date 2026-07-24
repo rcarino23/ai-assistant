@@ -22,7 +22,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
   const [value, setValue] = React.useState("");
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const { documents, addFiles, removeDocument, reset, error, setError } = useDocumentUpload();
+  const { documents, addFiles, removeDocument, reset, error, setError, isUploading } = useDocumentUpload();
 
   const resize = () => {
     const el = textareaRef.current;
@@ -34,7 +34,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
   React.useEffect(resize, [value]);
 
   const submit = () => {
-    if ((!value.trim() && documents.length === 0) || isStreaming || disabled) return;
+    if (isUploading || ((!value.trim() && documents.length === 0) || isStreaming || disabled)) return;
     onSend(value.trim(), documents);
     setValue("");
     reset();
@@ -47,9 +47,9 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
     }
   };
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    void addFiles(files);
+    await addFiles(files);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -79,6 +79,9 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
             <AttachmentChip key={doc.id} document={doc} onRemove={removeDocument} />
           ))}
         </div>
+      )}
+      {isUploading && (
+        <p className="mb-2 text-center text-xs text-muted">Preparing attachments…</p>
       )}
 
       <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-soft transition-shadow focus-within:shadow-[0_0_0_2px_var(--accent)]">
@@ -114,7 +117,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
           <Button
             size="icon"
             onClick={submit}
-            disabled={(!value.trim() && documents.length === 0) || disabled}
+            disabled={isUploading || (!value.trim() && documents.length === 0) || disabled}
             aria-label="Send message"
           >
             <ArrowUp className="h-4 w-4" />
@@ -123,7 +126,7 @@ export function MessageInput({ isStreaming, disabled, disabledReason, onSend, on
       </div>
       <p className="mt-2 text-center text-xs text-muted">
         Press Enter to send, Shift + Enter for a new line. Text, PDF, Word, and Excel files (.txt, .md, .csv,
-        .json, .xml, .pdf, .docx, .xlsx) are read as context; images are sent directly to the model; video and
+        .json, .xml, .pdf, .docx, .xls, .xlsx) are read as context; images are sent directly to the model; video and
         audio are attached but not read yet.
       </p>
     </div>

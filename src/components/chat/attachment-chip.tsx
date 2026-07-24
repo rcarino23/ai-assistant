@@ -10,9 +10,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Only these types ever populate `extractedText`, so only these should
-// ever show a "still loading" spinner.
-const TEXT_TYPES = new Set(["txt", "md", "csv", "json", "xml"]);
+const TEXT_TYPES = new Set(["txt", "md", "csv", "json", "xml", "pdf", "docx", "xls", "xlsx"]);
 
 function iconFor(type: UploadedDocument["type"]) {
   switch (type) {

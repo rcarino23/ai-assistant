@@ -3,17 +3,14 @@
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
-let pdfjsLibPromise: Promise<typeof import("pdfjs-dist")> | null = null;
+let pdfjsLibPromise: Promise<typeof import("pdfjs-dist/legacy/build/pdf.mjs")> | null = null;
 
 function loadPdfjs() {
   if (!pdfjsLibPromise) {
-    pdfjsLibPromise = import("pdfjs-dist").then((mod) => {
-      // Use a CDN build matching the installed package's own version string,
-      // rather than relying on webpack/Turbopack to bundle the worker file
-      // as a local asset — that resolution is flaky across bundlers and a
-      // version mismatch between API and worker throws a hard error.
-      mod.GlobalWorkerOptions.workerSrc =
-        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${mod.version}/pdf.worker.min.mjs`;
+    pdfjsLibPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((mod) => {
+      // Use a local worker asset so the browser can parse PDFs without relying
+      // on a third-party CDN or a flaky bundler resolution path.
+      mod.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       return mod;
     });
   }
@@ -21,7 +18,7 @@ function loadPdfjs() {
 }
 
 const SIMPLE_TEXT_EXTENSIONS = ["txt", "md", "csv", "json", "xml"];
-const RICH_DOCUMENT_EXTENSIONS = ["pdf", "docx", "xlsx"];
+const RICH_DOCUMENT_EXTENSIONS = ["pdf", "docx", "xls", "xlsx"];
 
 export function isExtractableFile(file: File): boolean {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -53,7 +50,7 @@ export function readFileAsText(file: File): Promise<string> {
 async function extractPdfText(file: File): Promise<string> {
   const pdfjsLib = await loadPdfjs();
   const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
   const pages: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -84,6 +81,6 @@ export async function extractDocumentText(file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (ext === "pdf") return extractPdfText(file);
   if (ext === "docx") return extractDocxText(file);
-  if (ext === "xlsx") return extractXlsxText(file);
+  if (ext === "xls" || ext === "xlsx") return extractXlsxText(file);
   return readFileAsText(file);
 }

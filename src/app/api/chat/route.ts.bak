@@ -1,6 +1,7 @@
+// src/app/api/chat/route.ts
 import { NextRequest } from "next/server";
 import { getProvider } from "@/features/providers/registry";
-import { setKnowledgeItems } from "@/features/knowledge-bank/server-store";
+import { getKnowledgeItems, setKnowledgeItems } from "@/features/knowledge-bank/server-store";
 import type { ChatMessage, ProviderSettings } from "@/types";
 import type { KnowledgeItem } from "@/features/knowledge-bank/types";
 import { condenseHistoryForProvider } from "@/features/chat/history-condenser";
@@ -14,7 +15,33 @@ interface ChatRequestBody {
   messages: ChatMessage[];
   settings: ProviderSettings;
   conversationId: string;
+  /**
+   * Only present when the client is (re)syncing the data bank — the first
+   * message of a conversation, or whenever items were added/removed/toggled
+   * since the last sync. Omitted on every other turn so the data bank
+   * content isn't re-sent on every request.
+   */
   knowledgeItems?: KnowledgeItem[];
+}
+
+function withKnowledgeContext(messages: ChatMessage[], items: KnowledgeItem[]): ChatMessage[] {
+  if (items.length === 0) return messages;
+
+  const bankContext = items
+    .map((item) => `<knowledge name="${item.name}">\n${item.content}\n</knowledge>`)
+    .join("\n\n");
+
+  const hasSystem = messages.some((m) => m.role === "system");
+  if (hasSystem) {
+    return messages.map((m) =>
+      m.role === "system" ? { ...m, content: `${bankContext}\n\n${m.content}` } : m
+    );
+  }
+
+  return [
+    { id: "knowledge-bank-context", role: "system", content: bankContext, createdAt: Date.now() },
+    ...messages,
+  ];
 }
 
 export async function POST(req: NextRequest) {
@@ -32,37 +59,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (Array.isArray(knowledgeItems)) {
+  // Only touch the store when the client actually sent a fresh set of
+  // items; otherwise reuse whatever's already cached for this conversation.
+  if (knowledgeItems) {
     setKnowledgeItems(conversationId, knowledgeItems);
   }
+  const storedItems = getKnowledgeItems(conversationId);
+  const withKnowledge = withKnowledgeContext(messages, storedItems);
 
-  const latestUserMessage =
-    [...messages].reverse().find((message) => message.role === "user") ??
-    messages[messages.length - 1] ??
-    { id: "missing-user-message", role: "user" as const, content: "", createdAt: Date.now() };
 
-  const hasAttachmentContext = (latestUserMessage.attachments ?? []).some(
-    (attachment) => attachment.selectedAsContext || attachment.type === "image"
-  );
+  const { contextText } = await retrieveContext({ conversationId, question: latestUserMessage.content });
+  const messagesWithContext = buildMessages({ systemPrompt, contextText, history: condensedHistory, question });
 
-  if (!latestUserMessage.content.trim() && !hasAttachmentContext) {
-    return new Response(JSON.stringify({ error: "Missing user message content." }), { status: 400 });
-  }
-
-  const systemPrompt = messages.find((message) => message.role === "system")?.content ?? "You are a helpful assistant.";
-  const condensedHistory = await condenseHistoryForProvider(messages, conversationId, provider);
-  const historyWithoutLatestUser = condensedHistory.filter((message) => message.id !== latestUserMessage.id);
-  const { contextText } = await retrieveContext({
-    conversationId,
-    question: latestUserMessage.content,
-    items: knowledgeItems,
-  });
-  const messagesWithContext = buildMessages({
-    systemPrompt,
-    contextText,
-    history: historyWithoutLatestUser,
-    questionMessage: latestUserMessage,
-  });
+  // const messagesWithContext =
+  //   providerId === "anthropic"
+  //     ? withKnowledge
+  //     : await condenseHistoryForProvider(withKnowledge, conversationId, provider);
 
   const encoder = new TextEncoder();
   const abortController = new AbortController();

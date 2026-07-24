@@ -21,6 +21,7 @@ function inferType(file: File): DocumentType {
     case "pdf": return "pdf";
     case "docx": return "docx";
     case "csv": return "csv";
+    case "xls": return "xls";
     case "xlsx": return "xlsx";
     case "json": return "json";
     case "xml": return "xml";
@@ -69,6 +70,7 @@ function truncateExtractedText(text: string, fileName: string): string {
 export function useDocumentUpload() {
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const previewUrls = useRef<Set<string>>(new Set());
 
   // Revoke any object URLs we created so we don't leak memory.
@@ -89,72 +91,70 @@ export function useDocumentUpload() {
         return;
       }
 
-      for (const file of list) {
-        const limit = maxSizeFor(file);
-        if (file.size > limit) {
-          setError(`"${file.name}" is larger than ${formatSize(limit)} and was skipped.`);
-          continue;
-        }
+      setIsUploading(true);
+      try {
+        for (const file of list) {
+          const limit = maxSizeFor(file);
+          if (file.size > limit) {
+            setError(`"${file.name}" is larger than ${formatSize(limit)} and was skipped.`);
+            continue;
+          }
 
-        const doc: UploadedDocument = {
-          id: uuid(),
-          name: file.name,
-          type: inferType(file),
-          sizeBytes: file.size,
-          extractedText: "",
-          uploadedAt: Date.now(),
-          selectedAsContext: true,
-        };
+          const doc: UploadedDocument = {
+            id: uuid(),
+            name: file.name,
+            type: inferType(file),
+            sizeBytes: file.size,
+            extractedText: "",
+            uploadedAt: Date.now(),
+            selectedAsContext: true,
+          };
 
-        // Images / video / audio: no text extraction — just attach with a
-        // local preview. This is expected, not an error.
-        if (isPreviewableMedia(file)) {
-          const previewUrl = URL.createObjectURL(file);
-          previewUrls.current.add(previewUrl);
+          if (isPreviewableMedia(file)) {
+            const previewUrl = URL.createObjectURL(file);
+            previewUrls.current.add(previewUrl);
 
-          if (file.type.startsWith("image/")) {
-            // Images: also read the actual bytes so they can be sent to the model.
-            try {
-              const base64Data = await readFileAsBase64(file);
-              const newDoc = { ...doc, previewUrl, base64Data, mediaType: file.type, selectedAsContext: true };
-              setDocuments((prev) => [...prev, newDoc]);
-            } catch {
-              setError(`Couldn't read "${file.name}".`);
+            if (file.type.startsWith("image/")) {
+              try {
+                const base64Data = await readFileAsBase64(file);
+                const newDoc = { ...doc, previewUrl, base64Data, mediaType: file.type, selectedAsContext: true };
+                setDocuments((prev) => [...prev, newDoc]);
+              } catch {
+                setError(`Couldn't read "${file.name}".`);
+                setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
+              }
+            } else {
               setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
             }
-          } else {
-            // video/audio: preview only, no model support yet
-            setDocuments((prev) => [...prev, { ...doc, previewUrl, selectedAsContext: false }]);
+            continue;
           }
-          continue;
-        }
 
-        // PDF / DOCX / XLSX: parse and read into the prompt as context, same as plain text files.
-        if (isRichDocumentFile(file)) {
-          try {
-            const text = truncateExtractedText(await extractDocumentText(file), file.name);
-            setDocuments((prev) => [...prev, { ...doc, extractedText: text }]);
-          } catch {
-            setError(`Couldn't read "${file.name}" — it was attached but its contents won't be sent to the model.`);
-            setDocuments((prev) => [...prev, doc]);
+          if (isRichDocumentFile(file)) {
+            try {
+              const text = truncateExtractedText(await extractDocumentText(file), file.name);
+              setDocuments((prev) => [...prev, { ...doc, extractedText: text }]);
+            } catch {
+              setError(`Couldn't read "${file.name}" — it was attached but its contents won't be sent to the model.`);
+              setDocuments((prev) => [...prev, doc]);
+            }
+            continue;
           }
-          continue;
-        }
 
-        // Plain text-ish files: read into the prompt as context.
-        if (isExtractableFile(file)) {
-          try {
-            const text = truncateExtractedText(await readFileAsText(file), file.name);
-            setDocuments((prev) => [...prev, { ...doc, extractedText: text }]);
-          } catch {
-            setError(`Couldn't read "${file.name}".`);
-            setDocuments((prev) => [...prev, doc]);
+          if (isExtractableFile(file)) {
+            try {
+              const text = truncateExtractedText(await readFileAsText(file), file.name);
+              setDocuments((prev) => [...prev, { ...doc, extractedText: text }]);
+            } catch {
+              setError(`Couldn't read "${file.name}".`);
+              setDocuments((prev) => [...prev, doc]);
+            }
+            continue;
           }
-          continue;
-        }
 
-        // Everything else (pdf, docx, xlsx, unknown types, etc.): attach it.
-        setDocuments((prev) => [...prev, doc]);
+          setDocuments((prev) => [...prev, doc]);
+        }
+      } finally {
+        setIsUploading(false);
       }
     },
     [documents.length]
@@ -193,5 +193,5 @@ export function useDocumentUpload() {
     });
   }, []);
 
-  return { documents, addFiles, removeDocument, clear, reset, error, setError };
+  return { documents, addFiles, removeDocument, clear, reset, error, setError, isUploading };
 }

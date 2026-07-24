@@ -58,6 +58,7 @@ export class GroqProvider implements AIProvider {
       role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
       content: withAttachmentText(m),
     }));
+    console.log("🚀 ~ GroqProvider ~ streamChat ~ apiMessages:", apiMessages)
 
     let res: Response;
     try {
