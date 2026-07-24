@@ -1,13 +1,24 @@
 "use client";
 
-import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+let pdfjsLibPromise: Promise<typeof import("pdfjs-dist")> | null = null;
+
+function loadPdfjs() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = import("pdfjs-dist").then((mod) => {
+      // Use a CDN build matching the installed package's own version string,
+      // rather than relying on webpack/Turbopack to bundle the worker file
+      // as a local asset — that resolution is flaky across bundlers and a
+      // version mismatch between API and worker throws a hard error.
+      mod.GlobalWorkerOptions.workerSrc =
+        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${mod.version}/pdf.worker.min.mjs`;
+      return mod;
+    });
+  }
+  return pdfjsLibPromise;
+}
 
 const SIMPLE_TEXT_EXTENSIONS = ["txt", "md", "csv", "json", "xml"];
 const RICH_DOCUMENT_EXTENSIONS = ["pdf", "docx", "xlsx"];
@@ -40,6 +51,7 @@ export function readFileAsText(file: File): Promise<string> {
 }
 
 async function extractPdfText(file: File): Promise<string> {
+  const pdfjsLib = await loadPdfjs();
   const buffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
   const pages: string[] = [];
